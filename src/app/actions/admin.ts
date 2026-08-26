@@ -51,8 +51,8 @@ export async function upsertCatAction(
   if (iconUrlRaw) {
     try {
       const parsed = new URL(iconUrlRaw);
-      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-        return { error: "アイコン画像URLはhttp(s)で指定してください" };
+      if (parsed.protocol !== "https:") {
+        return { error: "アイコン画像URLはHTTPSで指定してください" };
       }
       iconUrl = parsed.toString();
     } catch {
