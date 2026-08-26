@@ -7,9 +7,11 @@ export const dynamic = "force-dynamic";
 
 const ERRORS: Record<string, string> = {
   title: "タイトルを入力してください（120字以内）",
+  description: "説明は4000字以内にしてください",
   deadline: "締め切りは未来の日時にしてください",
   params: "評価軸を1つ以上入力してください",
   dup: "評価軸に重複があります",
+  nocats: "活動中の猫がいないため、議題を作成できません",
 };
 
 export default async function NewProposalPage({

@@ -194,7 +194,7 @@ export async function executeTurn(opts: {
 
       const opinionResults: OpinionTurnResult[] = [];
       const uiEvents: { type: string; payload: Record<string, unknown> }[] = [];
-      let votesCast = 0;
+        let votesCast = 0;
 
       for (const op of dueList) {
         const ctxCats: LLMCatContext[] = catRows.map((c) => {
@@ -253,6 +253,7 @@ export async function executeTurn(opts: {
           if (prev) mergedScores[c.id] = prev.score;
         }
         for (const [cid, v] of Object.entries(result.votes)) {
+          if (!nameById.has(cid)) continue;
           const prev = latest.get(`${op.id}:${cid}`);
           const stance = stanceOf(v.score);
           mergedScores[cid] = v.score;

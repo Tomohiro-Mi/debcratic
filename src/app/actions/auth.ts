@@ -1,8 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { sql } from "drizzle-orm";
 import {
-  countUsers,
   createSessionCookie,
   destroySessionCookie,
   findUserByEmail,
@@ -12,14 +12,14 @@ import {
 import { registerSchema, loginSchema } from "@/lib/validation";
 import { users } from "@/db/schema";
 import { getDb } from "@/db";
+import { safeRelativePath } from "@/lib/security";
 
 export interface AuthActionState {
   error?: string;
 }
 
 function safeNext(fd: FormData): string {
-  const n = String(fd.get("next") ?? "");
-  return n.startsWith("/") ? n : "/";
+  return safeRelativePath(fd.get("next"));
 }
 
 export async function registerAction(
@@ -35,24 +35,42 @@ export async function registerAction(
     return { error: parsed.error.issues[0]?.message ?? "入力内容を確認してください" };
   }
   const { name, email, password } = parsed.data;
-  if (await findUserByEmail(email)) {
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  if (process.env.NODE_ENV === "production" && !adminEmail) {
+    return { error: "管理者メールが未設定のため、現在は登録できません" };
+  }
+  const created = await getDb().transaction(async (tx) => {
+    // Serialize signup decisions so two simultaneous first signups cannot both become admins.
+    await tx.execute(sql`select pg_advisory_xact_lock(19790216)`);
+    const existing = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`${users.email} = ${email.toLowerCase()}`)
+      .limit(1);
+    if (existing.length > 0) return { user: null, duplicate: true } as const;
+
+    const countRows = await tx.select({ n: sql<number>`count(*)` }).from(users);
+    const isFirst = Number(countRows[0]?.n ?? 0) === 0;
+    const role =
+      (adminEmail && email.toLowerCase() === adminEmail) || (!adminEmail && isFirst)
+        ? ("admin" as const)
+        : ("user" as const);
+    const [user] = await tx
+      .insert(users)
+      .values({
+        name,
+        email: email.toLowerCase(),
+        passwordHash: await hashPassword(password),
+        role,
+      })
+      .returning();
+    return { user, duplicate: false } as const;
+  });
+
+  if (created.duplicate || !created.user) {
     return { error: "このメールアドレスは既に登録されています" };
   }
-  const isFirst = (await countUsers()) === 0;
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-  const role =
-    isFirst || (adminEmail && email.toLowerCase() === adminEmail)
-      ? ("admin" as const)
-      : ("user" as const);
-  const [user] = await getDb()
-    .insert(users)
-    .values({
-      name,
-      email: email.toLowerCase(),
-      passwordHash: await hashPassword(password),
-      role,
-    })
-    .returning();
+  const user = created.user;
   await createSessionCookie(user.id, user.role, user.name);
   redirect(safeNext(formData));
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { createProposalAction } from "@/app/actions/proposals";
 
 export interface CatOption {
@@ -33,8 +33,15 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
 
   const activeParams = paramNames.filter((p) => p.trim().length > 0);
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    const timezoneField = event.currentTarget.elements.namedItem("deadlineTimezone");
+    if (timezoneField instanceof HTMLInputElement) {
+      timezoneField.value = String(new Date().getTimezoneOffset());
+    }
+  };
+
   return (
-    <form action={createProposalAction} className="space-y-5">
+    <form action={createProposalAction} onSubmit={handleSubmit} className="space-y-5">
       <div className="card">
         <p className="section-title">🗳️ 議題の基本情報</p>
         <div className="space-y-3">
@@ -67,6 +74,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
               className="input"
               defaultValue={DEFAULT_DEADLINE}
             />
+            <input type="hidden" name="deadlineTimezone" defaultValue="0" />
           </div>
         </div>
       </div>

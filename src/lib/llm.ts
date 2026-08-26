@@ -44,7 +44,12 @@ const voteSchema = z.object({
   reason: z.string().max(500).catch(""),
   confidence: z.number().min(0).max(1).catch(0.5),
   factors: z
-    .array(z.object({ label: z.string().max(50), delta: z.number() }))
+    .array(
+      z.object({
+        label: z.string().trim().max(50),
+        delta: z.number().transform((v) => Math.max(-3, Math.min(3, v))),
+      }),
+    )
     .max(6)
     .catch([]),
 });

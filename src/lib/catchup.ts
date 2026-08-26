@@ -71,10 +71,12 @@ export async function finalizeAfterDeadline(pid: string): Promise<string> {
   const ranked = await rankEligibleOpinions(pid);
 
   if (ranked.length === 0) {
-    await db
+    const updated = await db
       .update(proposals)
       .set({ status: "CLOSED" })
-      .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")));
+      .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")))
+      .returning({ id: proposals.id });
+    if (updated.length === 0) return (await loadProposal(pid))?.status ?? "UNKNOWN";
     await insertEvent(pid, "ProposalFinished", {
       winner_opinion_id: null,
       note: "no_opinions",
@@ -84,13 +86,15 @@ export async function finalizeAfterDeadline(pid: string): Promise<string> {
 
   const isTie = ranked.length >= 2 && ranked[1].point === ranked[0].point;
   if (isTie) {
-    await db
+    const updated = await db
       .update(proposals)
       .set({
         status: "RUNOFF_PENDING",
         runoffAutoStartAt: new Date(Date.now() + RUNOFF_AUTO_START_HOURS * 3600_000),
       })
-      .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")));
+      .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")))
+      .returning({ id: proposals.id });
+    if (updated.length === 0) return (await loadProposal(pid))?.status ?? "UNKNOWN";
     await insertEvent(pid, "RunoffPending", {
       top_point: ranked[0].point,
       tied_count: ranked.filter((o) => o.point === ranked[0].point).length,
@@ -98,10 +102,12 @@ export async function finalizeAfterDeadline(pid: string): Promise<string> {
     return "RUNOFF_PENDING";
   }
 
-  await db
+  const updated = await db
     .update(proposals)
     .set({ status: "CLOSED", adoptedOpinionId: ranked[0].id })
-    .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")));
+    .where(and(eq(proposals.id, pid), eq(proposals.status, "OPEN")))
+    .returning({ id: proposals.id });
+  if (updated.length === 0) return (await loadProposal(pid))?.status ?? "UNKNOWN";
   await insertEvent(pid, "ProposalFinished", {
     winner_opinion_id: ranked[0].id,
     winner_snippet: ranked[0].content.slice(0, 60),
@@ -112,34 +118,47 @@ export async function finalizeAfterDeadline(pid: string): Promise<string> {
 
 export async function beginRunoff(pid: string): Promise<boolean> {
   const db = getDb();
-  const p = await loadProposal(pid);
-  if (!p || p.status !== "RUNOFF_PENDING") return false;
+  return db.transaction(async (tx) => {
+    const p = (
+      await tx.select().from(proposals).where(eq(proposals.id, pid)).limit(1)
+    )[0];
+    if (!p || p.status !== "RUNOFF_PENDING") return false;
 
-  const ranked = await rankEligibleOpinions(pid);
-  const topPoint = ranked[0]?.point ?? 0;
-  const tiedIds = ranked.filter((o) => o.point === topPoint).map((o) => o.id);
+    const ranked = await tx
+      .select()
+      .from(opinions)
+      .where(and(eq(opinions.proposalId, pid), isNull(opinions.deletedAt), eq(opinions.eligible, true)))
+      .orderBy(desc(opinions.point), asc(opinions.createdAt));
+    const topPoint = ranked[0]?.point ?? 0;
+    const tiedIds = ranked.filter((o) => o.point === topPoint).map((o) => o.id);
 
-  await db
-    .update(opinions)
-    .set({ eligible: false })
-    .where(and(eq(opinions.proposalId, pid), isNull(opinions.deletedAt)));
-  if (tiedIds.length > 0) {
-    await db.update(opinions).set({ eligible: true }).where(inArray(opinions.id, tiedIds));
-  }
-  await db
-    .update(proposals)
-    .set({
-      status: "RUNOFF",
-      runoffStartedAt: new Date(),
-      runoffAutoStartAt: null,
-      runoffTurnsDone: 0,
-    })
-    .where(and(eq(proposals.id, pid), eq(proposals.status, "RUNOFF_PENDING")));
-  await insertEvent(pid, "RunoffStarted", {
-    opinion_ids: tiedIds,
-    count: tiedIds.length,
+    const updated = await tx
+      .update(proposals)
+      .set({
+        status: "RUNOFF",
+        runoffStartedAt: new Date(),
+        runoffAutoStartAt: null,
+        runoffTurnsDone: 0,
+      })
+      .where(and(eq(proposals.id, pid), eq(proposals.status, "RUNOFF_PENDING")))
+      .returning({ id: proposals.id });
+    if (updated.length === 0) return false;
+
+    await tx
+      .update(opinions)
+      .set({ eligible: false })
+      .where(and(eq(opinions.proposalId, pid), isNull(opinions.deletedAt)));
+    if (tiedIds.length > 0) {
+      await tx.update(opinions).set({ eligible: true }).where(inArray(opinions.id, tiedIds));
+    }
+    await tx.insert(events).values({
+      proposalId: pid,
+      turnNumber: null,
+      type: "RunoffStarted",
+      payload: { opinion_ids: tiedIds, count: tiedIds.length },
+    });
+    return true;
   });
-  return true;
 }
 
 async function latestScoresOf(opinionId: string): Promise<number[]> {
@@ -201,10 +220,12 @@ export async function finalizeRunoff(pid: string): Promise<void> {
     winner = rng.pick(ties);
   }
 
-  await db
+  const updated = await db
     .update(proposals)
     .set({ status: "CLOSED", adoptedOpinionId: winner.id })
-    .where(and(eq(proposals.id, pid), eq(proposals.status, "RUNOFF")));
+    .where(and(eq(proposals.id, pid), eq(proposals.status, "RUNOFF")))
+    .returning({ id: proposals.id });
+  if (updated.length === 0) return;
   await insertEvent(pid, "ProposalFinished", {
     winner_opinion_id: winner.id,
     winner_snippet: winner.content.slice(0, 60),

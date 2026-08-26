@@ -4,12 +4,11 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
+import { getAuthSecret } from "@/lib/secrets";
 
 function derivedKey(): Buffer {
-  const secret =
-    process.env.AUTH_SECRET || "dev-insecure-secret-change-me-in-production";
   return createHash("sha256")
-    .update(`debcratic:secret-box:${secret}`)
+    .update(`debcratic:secret-box:${getAuthSecret()}`)
     .digest();
 }
 

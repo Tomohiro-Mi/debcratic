@@ -76,8 +76,8 @@ npm run dev                  # http://localhost:3000
 | `AUTH_SECRET` | ✅ | セッション署名用の長いランダム文字列 |
 | `OPENROUTER_API_KEY` | - | 未設定なら**デモモード**（決定論的なモック投票で全機能動作）。**管理画面からも設定可（暗号化保存・環境変数より優先）** |
 | `OPENROUTER_MODEL` | - | 既定 `openai/gpt-4o-mini`（管理画面でも変更可） |
-| `ADMIN_EMAIL` | - | このメールで登録すると管理者になる |
-| `CRON_SECRET` | - | 設定すると `/api/cron` を Bearer 認証で保護 |
+| `ADMIN_EMAIL` | ✅（本番） | このメールで登録すると管理者になる。Productionでは未設定だと新規登録を停止 |
+| `CRON_SECRET` | ✅（本番） | `/api/cron` のBearer認証。Productionでは必須 |
 | `DEMO_SEED` | - | シード時に `1` を渡すとデモ用議題も作成 |
 
 ### ローカルDB（Docker例）
@@ -90,10 +90,24 @@ docker run -d --name debcratic-pg -e POSTGRES_PASSWORD=debcratic \
 
 ## Vercel へのデプロイ
 
-1. GitHub リポジトリを Vercel に Import
-2. 環境変数を設定（`DATABASE_URL`, `AUTH_SECRET`, 必要に応じて `OPENROUTER_API_KEY` 等）
-3. Deploy（`vercel.json` により毎時クロン `/api/cron` が自動登録される）
-4. 初回のみ本番DBに対して `DATABASE_URL=<本番URL> npm run db:push && npm run db:seed` を実行
+1. GitHub リポジトリを Vercel に Import（Framework PresetはNext.jsのまま、Build Commandは`npm run build`）。
+2. VercelのProject Settings → Environment Variablesに、Production用の値を設定する。
+   `AUTH_SECRET` と `CRON_SECRET` はそれぞれ別の32文字以上のランダム値にする。
+3. `DEMO_SEED` は本番では設定しない。設定すると既知のデモ管理者アカウントが作られるため。
+4. Deploy（`vercel.json` によりUTC 0:00の1日1回クロン `/api/cron` が登録される）。
+5. 初回のみ、本番DBに対してローカルから `DATABASE_URL=<本番URL> npm run db:push && npm run db:seed` を実行する（`DEMO_SEED`は未設定）。
+6. `ADMIN_EMAIL`を設定してから最初の管理者アカウントを登録し、`/admin`へログインできることを確認する。
+
+ランダム値の例:
+
+```bash
+openssl rand -base64 48  # AUTH_SECRET用
+openssl rand -base64 48  # CRON_SECRET用（AUTH_SECRETとは別の値）
+```
+
+Vercel上では、`DATABASE_URL`にNeon/Vercel Postgres等の本番Postgres接続URLを設定する。`OPENROUTER_API_KEY`は任意で、未設定ならデモモードで動作する。APIキーを使う場合はVercelの環境変数に登録するか、デプロイ後に管理画面から暗号化保存する。
+
+`vercel.json`のCronはHobbyプランでデプロイできるよう1日1回にしている。Pro以上で毎時実行が必要なら、scheduleを`0 * * * *`に変更して再デプロイする。Cronの時刻はUTCで、ページ閲覧時にも遅れていた処理をcatch-upする。
 
 > **再投票について**: ページ閲覧時にも遡及処理（catch-up）が走るため、クロンなしでも時間経過分のターンが自動処理されます。クロンは確実な定期実行のための補助です。Vercel Hobby プランではクロンのスケジュール制限があるため、この二段構えにしています。
 
@@ -102,7 +116,7 @@ docker run -d --name debcratic-pg -e POSTGRES_PASSWORD=debcratic \
 | コマンド | 内容 |
 |---|---|
 | `npm run dev` / `build` / `start` | 開発 / 本番ビルド / 本番起動 |
-| `npm test` | ユニットテスト（ルールエンジン等 26件） |
+| `npm test` | ユニットテスト（ルールエンジン等 30件） |
 | `npm run typecheck` / `lint` | 型チェック / ESLint |
 | `npm run db:push` | スキーマをDBへ反映 |
 | `npm run db:seed` | シードデータ投入（`DEMO_SEED=1` でデモ議題も） |

@@ -6,14 +6,13 @@ import { SignJWT, jwtVerify } from "jose";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@/db/schema";
 import { getDb } from "@/db";
+import { getAuthSecret } from "@/lib/secrets";
 
 const COOKIE_NAME = "dnk_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 function secretKey(): Uint8Array {
-  const secret =
-    process.env.AUTH_SECRET || "dev-insecure-secret-change-me-in-production";
-  return new TextEncoder().encode(secret);
+  return new TextEncoder().encode(getAuthSecret());
 }
 
 export interface SessionInfo {
@@ -51,10 +50,18 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
   try {
     const { payload } = await jwtVerify(token, secretKey());
     if (!payload.sub) return null;
+    const user = (
+      await getDb()
+        .select({ id: users.id, role: users.role, name: users.name, bannedAt: users.bannedAt })
+        .from(users)
+        .where(eq(users.id, payload.sub))
+        .limit(1)
+    )[0];
+    if (!user || user.bannedAt) return null;
     return {
-      userId: payload.sub,
-      role: (payload.role as "user" | "admin") ?? "user",
-      name: (payload.name as string) ?? "",
+      userId: user.id,
+      role: user.role,
+      name: user.name,
     };
   } catch {
     return null;
