@@ -30,7 +30,7 @@ export function CatForm({
   const c = editingCat ?? null;
 
   return (
-    <form action={formAction} className="card">
+    <form action={formAction} encType="multipart/form-data" className="card">
       <p className="section-title">{c ? `🐱 ${c.name} を編集` : "➕ 猫を追加"}</p>
       {c && <input type="hidden" name="id" value={c.id} />}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -52,7 +52,17 @@ export function CatForm({
             className="input"
             placeholder="https://example.com/cat.png"
           />
-          <p className="mt-1 text-[11px] text-stone-400">HTTPS画像URLを指定すると絵文字の代わりに表示します。</p>
+          <p className="mt-1 text-[11px] text-stone-400">HTTPS画像URL、または下の画像ファイルを指定できます。</p>
+        </div>
+        <div>
+          <label className="label">アイコン画像をアップロード（任意）</label>
+          <input
+            name="iconFile"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="input file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100 file:px-2 file:py-1 file:text-xs file:font-bold file:text-orange-700"
+          />
+          <p className="mt-1 text-[11px] text-stone-400">JPEG・PNG・WebP、2MB以下。ファイル指定時はURLより優先されます。</p>
         </div>
         <div>
           <label className="label">性別</label>

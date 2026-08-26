@@ -75,6 +75,7 @@ npm run dev                  # http://localhost:3000
 | `AUTH_SECRET` | ✅ | セッション署名用の長いランダム文字列 |
 | `OPENROUTER_API_KEY` | - | 未設定なら**デモモード**（決定論的なモック投票で全機能動作）。**管理画面からも設定可（暗号化保存・環境変数より優先）** |
 | `OPENROUTER_MODEL` | - | 既定 `openai/gpt-4o-mini`（管理画面でも変更可） |
+| `BLOB_READ_WRITE_TOKEN` | - | Vercel Blobの読み書きトークン。管理画面から猫画像をアップロードする場合に必要 |
 | `ADMIN_EMAIL` | ✅（本番） | このメールで登録すると管理者になる。Productionでは未設定だと新規登録を停止 |
 | `CRON_SECRET` | ✅（本番） | `/api/cron` のBearer認証。Productionでは必須 |
 | `DEMO_SEED` | - | シード時に `1` を渡すとデモ用議題も作成 |
@@ -105,6 +106,8 @@ openssl rand -base64 48  # CRON_SECRET用（AUTH_SECRETとは別の値）
 ```
 
 Vercel上では、`DATABASE_URL`にNeon/Vercel Postgres等の本番Postgres接続URLを設定する。`OPENROUTER_API_KEY`は任意で、未設定ならデモモードで動作する。APIキーを使う場合はVercelの環境変数に登録するか、デプロイ後に管理画面から暗号化保存する。
+
+猫画像のアップロードを使う場合は、Vercel StorageでBlobストアを作成し、Productionを接続対象にする。自動作成される`BLOB_READ_WRITE_TOKEN`をVercelの環境変数へ設定すると、管理画面からJPEG・PNG・WebP（2MB以下）を保存できる。
 
 `vercel.json`のCronはHobbyプランでデプロイできるよう1日1回にしている。短い投票間隔を設定する場合やPro以上で高頻度に処理したい場合は、Cronのscheduleを`0 * * * *`などに変更して再デプロイする。Cronの時刻はUTCで、ページ閲覧時にも遅れていた処理をcatch-upする。
 

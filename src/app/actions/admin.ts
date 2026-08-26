@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { and, desc, eq, inArray, isNull, max } from "drizzle-orm";
+import { put } from "@vercel/blob";
+import { randomUUID } from "node:crypto";
 import {
   cats,
   events,
@@ -21,10 +23,29 @@ import { encryptSecret } from "@/lib/crypto";
 import { getEffectiveSettings, VOTE_INTERVAL_SETTINGS_ID } from "@/lib/settings";
 import { testLlmConnection } from "@/lib/llm";
 import { DEFAULTS } from "@/lib/constants";
+import { validateCatIconFile } from "@/lib/image-upload";
 
 export interface AdminActionState {
   error?: string;
   success?: string;
+}
+
+async function uploadCatIcon(file: FormDataEntryValue, name: string): Promise<string | null> {
+  const validated = await validateCatIconFile(file);
+  if (!validated) return null;
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("画像アップロードが未設定です（BLOB_READ_WRITE_TOKENを設定してください）");
+  }
+
+  const { file: imageFile, extension } = validated;
+  const pathname = `cats/${slugify(name) || "cat"}/${randomUUID()}.${extension}`;
+  const blob = await put(pathname, imageFile, {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: imageFile.type,
+    cacheControlMaxAge: 31536000,
+  });
+  return blob.url;
 }
 
 export async function upsertCatAction(
@@ -65,9 +86,15 @@ export async function upsertCatAction(
   if (factionId && !uuidSchema.safeParse(factionId).success) {
     return { error: "初期所属派閥の指定が正しくありません" };
   }
+  let uploadedIconUrl: string | null = null;
+  try {
+    uploadedIconUrl = await uploadCatIcon(formData.get("iconFile") ?? "", name);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "画像アップロードに失敗しました" };
+  }
   // Keep the image URL in the existing icon column so old production databases
   // can deploy this feature without a blocking schema migration.
-  const icon = iconUrl ?? (iconInput.slice(0, 16) || "🐱");
+  const icon = uploadedIconUrl ?? iconUrl ?? (iconInput.slice(0, 16) || "🐱");
 
   try {
     const db = getDb();
