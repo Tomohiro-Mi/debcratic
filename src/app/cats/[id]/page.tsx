@@ -93,34 +93,37 @@ export default async function CatPage({
             <p className="text-sm text-stone-400">まだ投票していません。</p>
           ) : (
             <div className="space-y-2">
-              {d.recentVotes.map((v, i) => (
-                <div key={i} className="rounded-xl border border-orange-100 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/proposals/${v.proposalId}`}
-                        className="line-clamp-1 text-xs font-bold text-orange-600 hover:underline"
-                      >
-                        {v.proposalTitle}
-                      </Link>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-stone-600">
-                        対象案: {v.content}
-                      </p>
+              {d.recentVotes.map((v, i) => {
+                const displayReason = displayCatComment(v.reason, c.silent, c.silentComment);
+                return (
+                  <div key={i} className="rounded-xl border border-orange-100 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/proposals/${v.proposalId}`}
+                          className="line-clamp-1 text-xs font-bold text-orange-600 hover:underline"
+                        >
+                          {v.proposalTitle}
+                        </Link>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-stone-600">
+                          対象案: {v.content}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <ScoreChip score={v.score} />
+                        <p className="mt-0.5 text-[10px] text-stone-300">
+                          Turn {v.turnNumber}
+                        </p>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <ScoreChip score={v.score} />
-                      <p className="mt-0.5 text-[10px] text-stone-300">
-                        Turn {v.turnNumber}
+                    {displayReason && (
+                      <p className="mt-1.5 text-xs text-stone-400">
+                        「{displayReason}」
                       </p>
-                    </div>
+                    )}
                   </div>
-                  {displayCatComment(v.reason, c.silent) && (
-                    <p className="mt-1.5 text-xs text-stone-400">
-                      「{displayCatComment(v.reason, c.silent)}」
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

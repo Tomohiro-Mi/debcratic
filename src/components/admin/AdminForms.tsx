@@ -28,6 +28,7 @@ export function CatForm({
     gender: "オス" | "メス" | "セン";
     commentSuffix: (typeof COMMENT_SUFFIXES)[number];
     silent: boolean;
+    silentComment: string;
     power: number;
     factionId: string | null;
     role: "leader" | "follower" | null;
@@ -43,6 +44,7 @@ export function CatForm({
   const [power, setPower] = useState(c?.power ?? 5);
   const [gender, setGender] = useState<"オス" | "メス" | "セン">(c?.gender ?? "セン");
   const [silent, setSilent] = useState(c?.silent ?? false);
+  const [silentComment, setSilentComment] = useState(c?.silentComment ?? SILENT_CAT_COMMENT);
   const [isLeader, setIsLeader] = useState(c?.role === "leader");
   const [factionId, setFactionId] = useState(c?.role === "follower" ? c.factionId ?? "" : "");
   const canLead = power >= LEADER_POWER_THRESHOLD;
@@ -147,7 +149,19 @@ export function CatForm({
             <span>話さない</span>
           </label>
           <p className="mt-1 text-[10px] text-stone-400">
-            投票理由は保存したまま、画面では常に「{SILENT_CAT_COMMENT}」と表示します。
+            投票理由は保存したまま、話さないがONの時は下の表示文言を表示します。
+          </p>
+          <label className="label mt-2">話さない際の表示文言</label>
+          <input
+            name="silentComment"
+            value={silentComment}
+            onChange={(event) => setSilentComment(event.target.value)}
+            maxLength={200}
+            className="input"
+            placeholder={SILENT_CAT_COMMENT}
+          />
+          <p className="mt-1 text-[10px] text-stone-400">
+            未入力の場合は「{SILENT_CAT_COMMENT}」を表示します。
           </p>
         </div>
         <div>

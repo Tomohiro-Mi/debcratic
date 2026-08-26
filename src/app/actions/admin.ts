@@ -36,6 +36,7 @@ import {
   LEADER_POWER_THRESHOLD,
   MAX_VOTE_INTERVAL_MINUTES,
   MIN_VOTE_INTERVAL_MINUTES,
+  SILENT_CAT_COMMENT,
   type CommentSuffix,
 } from "@/lib/constants";
 import { validateCatIconFile } from "@/lib/image-upload";
@@ -86,6 +87,9 @@ export async function upsertCatAction(
     ? (commentSuffixRaw as CommentSuffix)
     : "普通";
   const silent = formData.get("silent") === "1";
+  const silentComment =
+    String(formData.get("silentComment") ?? SILENT_CAT_COMMENT).trim().slice(0, 200) ||
+    SILENT_CAT_COMMENT;
   const powerRaw = Number(formData.get("power") ?? 1);
   const power = Number.isFinite(powerRaw)
     ? Math.max(1, Math.min(10, Math.round(powerRaw)))
@@ -169,17 +173,17 @@ export async function upsertCatAction(
         if (legacyColumns.has("type")) {
           if (legacyColumns.has("permanent_params")) {
             await tx.execute(sql`
-              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "power", "permanent_params")
-              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${power}, '{}'::jsonb)
+              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "silent_comment", "power", "permanent_params")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${silentComment}, ${power}, '{}'::jsonb)
             `);
           } else {
             await tx.execute(sql`
-              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "power")
-              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${power})
+              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "silent_comment", "power")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${silentComment}, ${power})
             `);
           }
         } else {
-          await tx.insert(cats).values({ id, name, icon, gender, commentSuffix, silent, power });
+          await tx.insert(cats).values({ id, name, icon, gender, commentSuffix, silent, silentComment, power });
         }
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
@@ -286,6 +290,7 @@ export async function upsertCatAction(
           gender,
           commentSuffix,
           silent,
+          silentComment,
           power,
           factionId: desiredFaction?.id ?? null,
           leaderId: desiredFaction?.leaderId ?? null,

@@ -13,6 +13,7 @@ export interface VoteView {
   stance: string;
   reason: string;
   silent: boolean;
+  silentComment: string;
   confidence: number;
   factors: VoteFactor[];
   model: string;
@@ -26,7 +27,7 @@ const STANCE_LABEL: Record<string, string> = {
 
 export function VoteCard({ v, prevScore }: { v: VoteView; prevScore?: number }) {
   const isDemo = v.model.includes("demo");
-  const displayReason = displayCatComment(v.reason, v.silent);
+  const displayReason = displayCatComment(v.reason, v.silent, v.silentComment);
   const trend =
     prevScore !== undefined && prevScore !== v.score
       ? v.score > prevScore
