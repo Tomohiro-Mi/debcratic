@@ -38,6 +38,7 @@ import {
 } from "@/lib/constants";
 import { validateCatIconFile } from "@/lib/image-upload";
 import { nextVoteDue } from "@/lib/scheduler";
+import { catIconProxyUrl, isCatIconProxyUrl } from "@/lib/cat-icon";
 
 export interface AdminActionState {
   error?: string;
@@ -54,12 +55,12 @@ async function uploadCatIcon(file: FormDataEntryValue, name: string): Promise<st
   const { file: imageFile, extension } = validated;
   const pathname = `cats/${slugify(name) || "cat"}/${randomUUID()}.${extension}`;
   const blob = await put(pathname, imageFile, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: imageFile.type,
     cacheControlMaxAge: 31536000,
   });
-  return blob.url;
+  return catIconProxyUrl(blob.pathname);
 }
 
 export async function upsertCatAction(
@@ -72,6 +73,8 @@ export async function upsertCatAction(
   const name = String(formData.get("name") ?? "").trim().slice(0, 60);
   const iconInput = String(formData.get("icon") ?? "🐱").trim().slice(0, 1000);
   const iconUrlRaw = String(formData.get("iconUrl") ?? "").trim().slice(0, 1000);
+  const currentIconRaw = String(formData.get("currentIcon") ?? "").trim().slice(0, 1000);
+  const clearIconImage = formData.get("clearIconImage") === "1";
   const genderRaw = String(formData.get("gender") ?? "セン").trim();
   const gender = ["オス", "メス", "セン"].includes(genderRaw)
     ? (genderRaw as "オス" | "メス" | "セン")
@@ -86,14 +89,18 @@ export async function upsertCatAction(
 
   let iconUrl: string | null = null;
   if (iconUrlRaw) {
-    try {
-      const parsed = new URL(iconUrlRaw);
-      if (parsed.protocol !== "https:") {
-        return { error: "アイコン画像URLはHTTPSで指定してください" };
+    if (isCatIconProxyUrl(iconUrlRaw)) {
+      iconUrl = iconUrlRaw;
+    } else {
+      try {
+        const parsed = new URL(iconUrlRaw);
+        if (parsed.protocol !== "https:") {
+          return { error: "アイコン画像URLはHTTPSで指定してください" };
+        }
+        iconUrl = parsed.toString();
+      } catch {
+        return { error: "アイコン画像URLの形式が正しくありません" };
       }
-      iconUrl = parsed.toString();
-    } catch {
-      return { error: "アイコン画像URLの形式が正しくありません" };
     }
   }
   if (!name) return { error: "名前は必須です" };
@@ -112,7 +119,10 @@ export async function upsertCatAction(
   }
   // Keep the image URL in the existing icon column so old production databases
   // can deploy this feature without a blocking schema migration.
-  const icon = uploadedIconUrl ?? iconUrl ?? (iconInput.slice(0, 16) || "🐱");
+  const icon = uploadedIconUrl
+    ?? iconUrl
+    ?? (!clearIconImage && isCatIconProxyUrl(currentIconRaw) ? currentIconRaw : null)
+    ?? (iconInput.slice(0, 16) || "🐱");
 
   try {
     const db = getDb();

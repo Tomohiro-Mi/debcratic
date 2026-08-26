@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
+import { isCatIconImage } from "@/lib/cat-icon";
+
 export function CatAvatar({
   icon,
   iconUrl,
@@ -8,7 +10,7 @@ export function CatAvatar({
   iconUrl?: string | null;
   size?: number;
 }) {
-  const imageSrc = iconUrl ?? (/^https?:\/\//i.test(icon) ? icon : null);
+  const imageSrc = iconUrl ?? (isCatIconImage(icon) ? icon : null);
   const fallbackIcon = imageSrc ? "🐱" : icon;
   return (
     <span

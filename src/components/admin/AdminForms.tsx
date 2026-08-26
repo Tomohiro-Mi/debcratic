@@ -8,6 +8,7 @@ import {
   type AdminActionState,
 } from "@/app/actions/admin";
 import { FOLLOWER_MAX_POWER, LEADER_POWER_THRESHOLD } from "@/lib/constants";
+import { isCatIconProxyUrl } from "@/lib/cat-icon";
 
 export function CatForm({
   editingCat,
@@ -18,6 +19,7 @@ export function CatForm({
     name: string;
     icon: string;
     iconUrl: string | null;
+    currentIcon: string;
     gender: "オス" | "メス" | "セン";
     power: number;
     factionId: string | null;
@@ -41,6 +43,7 @@ export function CatForm({
     <form action={formAction} encType="multipart/form-data" className="card">
       <p className="section-title">{c ? `🐱 ${c.name} を編集` : "➕ 猫を追加"}</p>
       {c && <input type="hidden" name="id" value={c.id} />}
+      {c && <input type="hidden" name="currentIcon" value={c.currentIcon} />}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label">名前</label>
@@ -67,6 +70,12 @@ export function CatForm({
             placeholder="https://example.com/cat.png"
           />
           <p className="mt-1 text-[11px] text-stone-400">HTTPS画像URL、または下の画像ファイルを指定できます。</p>
+          {c?.currentIcon && isCatIconProxyUrl(c.currentIcon) && (
+            <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-500">
+              <input name="clearIconImage" type="checkbox" value="1" className="accent-orange-500" />
+              現在のアップロード画像を解除する
+            </label>
+          )}
         </div>
         <div>
           <label className="label">アイコン画像をアップロード（任意）</label>

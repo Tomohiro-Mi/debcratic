@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/admin";
 import { toggleCatActiveAction } from "@/app/actions/admin";
 import { formatDate } from "@/lib/format";
+import { isCatIconImage } from "@/lib/cat-icon";
 
 export const dynamic = "force-dynamic";
 
@@ -102,8 +103,9 @@ export default async function AdminPage() {
                             editingCat={{
                               id: c.id,
                               name: c.name,
-                              icon: /^https?:\/\//i.test(c.icon) ? "🐱" : c.icon,
+                              icon: isCatIconImage(c.icon) ? "🐱" : c.icon,
                               iconUrl: /^https?:\/\//i.test(c.icon) ? c.icon : "",
+                              currentIcon: c.icon,
                               gender: c.gender,
                               power: c.power,
                               factionId: c.factionId,
