@@ -84,7 +84,7 @@ export default async function ProposalPage({
     <div className="space-y-6">
       <AutoRefresh seconds={60} />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_350px]">
         <div className="space-y-5">
           <header className="card">
             <div className="flex flex-wrap items-center gap-2">
@@ -237,38 +237,40 @@ export default async function ProposalPage({
             <TimelineList events={d.events} />
           </section>
 
-          <section className="card">
+          <section className="card overflow-hidden">
             <h2 className="section-title">🐱 各猫の評価軸値</h2>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-stone-400">
-                  <th className="py-1">猫</th>
-                  {d.params.map((p) => (
-                    <th key={p.id} className="py-1 text-center whitespace-nowrap">
-                      {p.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...d.catsView]
-                  .sort((a, b) => b.power - a.power)
-                  .map((c) => (
-                    <tr key={c.id} className="border-t border-orange-50">
-                      <td className="py-1.5 font-bold whitespace-nowrap">
-                        <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
-                          {c.icon} {c.name}
-                        </Link>
-                      </td>
-                      {d.params.map((p) => (
-                        <td key={p.id} className="py-1.5 text-center tabular-nums text-stone-600">
-                          {cvMap.get(c.id)?.[p.name] ?? "-"}
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <table className="w-full min-w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-stone-400">
+                    <th className="py-1 pr-1">猫</th>
+                    {d.params.map((p) => (
+                      <th key={p.id} className="px-1 py-1 text-center whitespace-nowrap">
+                        {p.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...d.catsView]
+                    .sort((a, b) => b.power - a.power)
+                    .map((c) => (
+                      <tr key={c.id} className="border-t border-orange-50">
+                        <td className="py-1.5 font-bold whitespace-nowrap">
+                          <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
+                            {c.icon} {c.name}
+                          </Link>
                         </td>
-                      ))}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+                        {d.params.map((p) => (
+                          <td key={p.id} className="px-1 py-1.5 text-center tabular-nums text-stone-600">
+                            {cvMap.get(c.id)?.[p.name] ?? "-"}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         </aside>
       </div>
