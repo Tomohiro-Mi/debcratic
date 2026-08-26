@@ -238,7 +238,7 @@ export async function processProposalCatchup(pid: string): Promise<CatchupSummar
   const db = getDb();
   const settings = await getEffectiveSettings();
   const runoffLimit = settings.runoffTurnLimit ?? DEFAULTS.runoffTurnLimit;
-  const voteIntervalMs = settings.voteIntervalMinutes * 60_000;
+  const runoffVoteIntervalMs = settings.runoffVoteIntervalMinutes * 60_000;
   let turnsRun = 0;
   let safety = 0;
 
@@ -272,14 +272,14 @@ export async function processProposalCatchup(pid: string): Promise<CatchupSummar
         continue;
       }
       const started = p.runoffStartedAt?.getTime() ?? Date.now();
-      const nextAt = new Date(started + (p.runoffTurnsDone ?? 0) * voteIntervalMs);
+      const nextAt = new Date(started + (p.runoffTurnsDone ?? 0) * runoffVoteIntervalMs);
       if (new Date() < nextAt) break;
       const r = await executeTurn({ proposalId: pid, kind: "runoff" });
       if (!r.ok) break;
       if (r.skipped) {
         await db
           .update(opinions)
-          .set({ nextVoteDue: new Date(Date.now() + voteIntervalMs) })
+          .set({ nextVoteDue: new Date(Date.now() + runoffVoteIntervalMs) })
           .where(and(eq(opinions.proposalId, pid), eq(opinions.eligible, true)));
       }
       await db

@@ -144,7 +144,7 @@ export default async function ProposalPage({
           {d.proposal.status === "RUNOFF" && (
             <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
               <p className="text-sm font-black text-violet-700">
-                🏁 決選投票中 — {d.proposal.runoffTurnsDone}/{d.runoffTurnLimitRow} ターン終了（{d.voteIntervalMinutes}分ごと）
+                🏁 決選投票中 — {d.proposal.runoffTurnsDone}/{d.runoffTurnLimitRow} ターン終了（{d.runoffVoteIntervalMinutes}分ごと）
               </p>
             </section>
           )}

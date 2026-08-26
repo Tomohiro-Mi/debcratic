@@ -291,8 +291,8 @@ export async function executeTurn(opts: {
         const newPoint = Object.values(mergedScores).reduce((a, b) => a + b, 0);
         const nextDue =
           opts.kind === "runoff"
-            ? runoffVoteDue(new Date(), settings.voteIntervalMinutes)
-            : nextVoteDue(op.createdAt, new Date(), settings.voteIntervalMinutes);
+            ? runoffVoteDue(new Date(), settings.runoffVoteIntervalMinutes)
+            : nextVoteDue(op.createdAt, new Date(), settings.voteIntervals);
         await tx
           .update(opinions)
           .set({

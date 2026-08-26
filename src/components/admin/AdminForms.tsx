@@ -124,7 +124,13 @@ export function SettingsForm({
     changeWindow: number;
     changeThreshold: number;
     runoffTurnLimit: number;
-    voteIntervalMinutes: number;
+    voteIntervals: {
+      within24h: number;
+      withinWeek: number;
+      withinMonth: number;
+      afterMonth: number;
+    };
+    runoffVoteIntervalMinutes: number;
     hasApiKey: boolean;
     apiKeySource: "db" | "env" | null;
     apiKeyHint: string | null;
@@ -223,10 +229,14 @@ export function SettingsForm({
           {field("changeWindow", "意見変更判定ウィンドウ(ターン)", s.changeWindow)}
           {field("changeThreshold", "意見変更ペナルティしきい値(回)", s.changeThreshold)}
           {field("runoffTurnLimit", "決選投票ターン数", s.runoffTurnLimit)}
-          {field("voteIntervalMinutes", "投票間隔（分）", s.voteIntervalMinutes, { step: "1", min: 1, max: 10080 })}
+          {field("voteIntervalWithin24h", "投稿から24時間以内（分）", s.voteIntervals.within24h, { step: "1", min: 1, max: 525600 })}
+          {field("voteIntervalWithinWeek", "投稿から1週間以内（分）", s.voteIntervals.withinWeek, { step: "1", min: 1, max: 525600 })}
+          {field("voteIntervalWithinMonth", "投稿から1ヶ月以内（分）", s.voteIntervals.withinMonth, { step: "1", min: 1, max: 525600 })}
+          {field("voteIntervalAfterMonth", "投稿から1ヶ月超（分）", s.voteIntervals.afterMonth, { step: "1", min: 1, max: 525600 })}
+          {field("runoffVoteIntervalMinutes", "決選投票の間隔（分）", s.runoffVoteIntervalMinutes, { step: "1", min: 1, max: 525600 })}
         </div>
         <p className="mt-2 text-xs text-stone-400">
-          通常の再投票と決選投票の間隔です（1〜10080分）。初回投票は投稿直後に行われます。
+          初回投票は投稿直後に行われ、その後は投稿からの経過時間に応じた間隔で再投票します（1〜525600分）。24時間・1週間・1ヶ月の境界は投稿時刻を基準に判定します。決選投票は専用の間隔を使用します。
         </p>
         {state.error && <p className="mt-3 text-sm font-bold text-red-600">{state.error}</p>}
         {state.success && (

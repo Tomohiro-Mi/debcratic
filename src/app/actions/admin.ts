@@ -20,10 +20,22 @@ import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { slugify, uuidSchema } from "@/lib/validation";
 import { encryptSecret } from "@/lib/crypto";
-import { getEffectiveSettings, VOTE_INTERVAL_SETTINGS_ID } from "@/lib/settings";
+import {
+  getEffectiveSettings,
+  RUNOFF_INTERVAL_SETTINGS_ID,
+  VOTE_INTERVAL_AFTER_MONTH_SETTINGS_ID,
+  VOTE_INTERVAL_MONTH_SETTINGS_ID,
+  VOTE_INTERVAL_SETTINGS_ID,
+  VOTE_INTERVAL_WEEK_SETTINGS_ID,
+} from "@/lib/settings";
 import { testLlmConnection } from "@/lib/llm";
-import { DEFAULTS } from "@/lib/constants";
+import {
+  DEFAULTS,
+  MAX_VOTE_INTERVAL_MINUTES,
+  MIN_VOTE_INTERVAL_MINUTES,
+} from "@/lib/constants";
 import { validateCatIconFile } from "@/lib/image-upload";
+import { nextVoteDue } from "@/lib/scheduler";
 
 export interface AdminActionState {
   error?: string;
@@ -244,28 +256,63 @@ export async function saveSettingsAction(
     values.llmApiKeyEnc = encryptSecret(rawKey);
   }
 
+  const legacyInterval = numOrNull(
+    "voteIntervalMinutes",
+    MIN_VOTE_INTERVAL_MINUTES,
+    MAX_VOTE_INTERVAL_MINUTES,
+  );
+  const voteIntervals = {
+    within24h:
+      numOrNull("voteIntervalWithin24h", MIN_VOTE_INTERVAL_MINUTES, MAX_VOTE_INTERVAL_MINUTES) ??
+      legacyInterval ??
+      DEFAULTS.voteIntervals.within24h,
+    withinWeek:
+      numOrNull("voteIntervalWithinWeek", MIN_VOTE_INTERVAL_MINUTES, MAX_VOTE_INTERVAL_MINUTES) ??
+      legacyInterval ??
+      DEFAULTS.voteIntervals.withinWeek,
+    withinMonth:
+      numOrNull("voteIntervalWithinMonth", MIN_VOTE_INTERVAL_MINUTES, MAX_VOTE_INTERVAL_MINUTES) ??
+      legacyInterval ??
+      DEFAULTS.voteIntervals.withinMonth,
+    afterMonth:
+      numOrNull("voteIntervalAfterMonth", MIN_VOTE_INTERVAL_MINUTES, MAX_VOTE_INTERVAL_MINUTES) ??
+      legacyInterval ??
+      DEFAULTS.voteIntervals.afterMonth,
+  };
+  const runoffIntervalMinutes =
+    numOrNull("runoffVoteIntervalMinutes", MIN_VOTE_INTERVAL_MINUTES, MAX_VOTE_INTERVAL_MINUTES) ??
+    legacyInterval ??
+    DEFAULTS.voteIntervalMinutes;
+
   const db = getDb();
-  const intervalMinutes = numOrNull("voteIntervalMinutes", 1, 10080) ?? DEFAULTS.voteIntervalMinutes;
-  const intervalMs = intervalMinutes * 60_000;
   await db.transaction(async (tx) => {
     await tx
       .insert(systemSettings)
       .values({ id: 1, ...values })
       .onConflictDoUpdate({ target: systemSettings.id, set: values });
-    await tx
-      .insert(systemSettings)
-      .values({
-        id: VOTE_INTERVAL_SETTINGS_ID,
-        runoffTurnLimit: intervalMinutes,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: systemSettings.id,
-        set: { runoffTurnLimit: intervalMinutes, updatedAt: new Date() },
-      });
+    const intervalRows = [
+      { id: VOTE_INTERVAL_SETTINGS_ID, minutes: voteIntervals.within24h },
+      { id: VOTE_INTERVAL_WEEK_SETTINGS_ID, minutes: voteIntervals.withinWeek },
+      { id: VOTE_INTERVAL_MONTH_SETTINGS_ID, minutes: voteIntervals.withinMonth },
+      { id: VOTE_INTERVAL_AFTER_MONTH_SETTINGS_ID, minutes: voteIntervals.afterMonth },
+      { id: RUNOFF_INTERVAL_SETTINGS_ID, minutes: runoffIntervalMinutes },
+    ];
+    for (const interval of intervalRows) {
+      await tx
+        .insert(systemSettings)
+        .values({
+          id: interval.id,
+          runoffTurnLimit: interval.minutes,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: systemSettings.id,
+          set: { runoffTurnLimit: interval.minutes, updatedAt: new Date() },
+        });
+    }
 
     // Apply a changed interval to currently open proposals too. Their next
-    // schedule is based on the last vote, so changing the setting takes effect
+    // schedule uses the current age bucket, so the new setting takes effect
     // without waiting for the old schedule to fire once more.
     const activeProposalRows = await tx
       .select({ id: proposals.id })
@@ -277,7 +324,6 @@ export async function saveSettingsAction(
         .select({
           id: opinions.id,
           createdAt: opinions.createdAt,
-          lastVotedAt: opinions.lastVotedAt,
         })
         .from(opinions)
         .where(
@@ -288,10 +334,9 @@ export async function saveSettingsAction(
           ),
         );
       for (const opinion of activeOpinions) {
-        const base = opinion.lastVotedAt ?? opinion.createdAt;
         await tx
           .update(opinions)
-          .set({ nextVoteDue: new Date(base.getTime() + intervalMs) })
+          .set({ nextVoteDue: nextVoteDue(opinion.createdAt, new Date(), voteIntervals) })
           .where(eq(opinions.id, opinion.id));
       }
     }

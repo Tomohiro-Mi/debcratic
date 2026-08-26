@@ -21,7 +21,16 @@ export const DEFAULTS = {
   changeThreshold: 2,
   runoffTurnLimit: 5,
   voteIntervalMinutes: 60,
+  voteIntervals: {
+    within24h: 60,
+    withinWeek: 12 * 60,
+    withinMonth: 24 * 60,
+    afterMonth: 7 * 24 * 60,
+  },
 } as const;
+
+export const MIN_VOTE_INTERVAL_MINUTES = 1;
+export const MAX_VOTE_INTERVAL_MINUTES = 365 * 24 * 60;
 
 export const OPINION_RATE_LIMIT_MS = 10 * 60 * 1000;
 
