@@ -50,9 +50,7 @@ export default async function CatsPage() {
                 ) : (
                   <span className="chip bg-stone-100 text-stone-400">無所属</span>
                 )}
-                <Link href={`/cats/${c.id}`} className="font-bold text-orange-500 hover:underline">
-                  プロフィール →
-                </Link>
+                <span className="font-bold text-orange-500">プロフィール →</span>
               </div>
             </Link>
           ))}

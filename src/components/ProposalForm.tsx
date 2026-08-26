@@ -14,6 +14,10 @@ function toLocalInputValue(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const DEFAULT_DEADLINE = toLocalInputValue(
+  new Date(Date.now() + 7 * 24 * 3600_000),
+);
+
 export function ProposalForm({ cats }: { cats: CatOption[] }) {
   const [paramNames, setParamNames] = useState<string[]>(["", ""]);
 
@@ -61,9 +65,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
               type="datetime-local"
               required
               className="input"
-              defaultValue={toLocalInputValue(
-                new Date(Date.now() + 7 * 24 * 3600_000),
-              )}
+              defaultValue={DEFAULT_DEADLINE}
             />
           </div>
         </div>

@@ -22,7 +22,7 @@
 
 | レイヤ | 技術 |
 |---|---|
-| Framework | Next.js 15 (App Router) / React 19 / TypeScript |
+| Framework | Next.js 16 (App Router) / React 19 / TypeScript |
 | Styling | Tailwind CSS v4 |
 | DB | PostgreSQL + Drizzle ORM |
 | LLM | OpenRouter API（Structured Output）※キー未設定時はデモモード |
@@ -135,5 +135,6 @@ src/
 
 - **LLMが判断しないもの**: 権力変動・派閥成立/解散/破門・Point計算・決選投票はすべて Rule Engine が決定論的に処理（§22）。LLMは賛同度・理由・要因の生成のみ。
 - **Seed付き乱数**: 各Turnの `random_seed` を保存し、同一入力から同一結果を再現可能（§44）。
+- **既知の脆弱性スキャンについて**: `npm audit` で drizzle-kit（開発用CLIのみ）経由の esbuild 中危険度4件が残っています。アップストリームに修正版が未リリースのため。ランタイムには影響しません（drizzle-kitは `db:push` 等の開発時コマンドでのみ使用）。
 - **API KEY**: 管理画面から保存すると AES-256-GCM（`AUTH_SECRET`由来の鍵）で暗号化してDBに保存。ブラウザへは送信されず、UIでは下4桁のみ表示（§67）。環境変数 `OPENROUTER_API_KEY` も利用可（DB保存キーが優先）。
 - **監査ログ**: 全LLM呼び出しを `llm_logs` に記録（model/prompt_version/input_hash/output、§68）。
