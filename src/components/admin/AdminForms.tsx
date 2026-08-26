@@ -7,7 +7,7 @@ import {
   upsertCatAction,
   type AdminActionState,
 } from "@/app/actions/admin";
-import { FOLLOWER_MAX_POWER, LEADER_POWER_THRESHOLD } from "@/lib/constants";
+import { COMMENT_SUFFIXES, FOLLOWER_MAX_POWER, LEADER_POWER_THRESHOLD } from "@/lib/constants";
 import { isCatIconProxyUrl } from "@/lib/cat-icon";
 
 export function CatForm({
@@ -21,6 +21,7 @@ export function CatForm({
     iconUrl: string | null;
     currentIcon: string;
     gender: "オス" | "メス" | "セン";
+    commentSuffix: (typeof COMMENT_SUFFIXES)[number];
     power: number;
     factionId: string | null;
     role: "leader" | "follower" | null;
@@ -116,6 +117,17 @@ export function CatForm({
             <option value="メス">メス</option>
             <option value="セン">セン</option>
           </select>
+        </div>
+        <div>
+          <label className="label">コメントの語尾</label>
+          <select name="commentSuffix" defaultValue={c?.commentSuffix ?? "普通"} className="input">
+            {COMMENT_SUFFIXES.map((suffix) => (
+              <option key={suffix} value={suffix}>
+                {suffix === "普通" ? "普通（指定なし）" : suffix}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] text-stone-400">この猫の投票理由コメントに反映されます。</p>
         </div>
         <div>
           <label className="label">初期権力（1〜10）</label>

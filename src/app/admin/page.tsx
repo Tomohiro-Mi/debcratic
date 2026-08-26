@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getEffectiveSettings } from "@/lib/settings";
 import { CatForm, SettingsForm } from "@/components/admin/AdminForms";
 import { CatAvatar } from "@/components/CatAvatar";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { fetchOpenRouterModels, POPULAR_MODELS } from "@/lib/llm";
 import {
   resolveReportAction,
@@ -99,7 +100,7 @@ export default async function AdminPage() {
                         <summary className="btn btn-ghost !px-2 !py-1 text-[10px]">編集</summary>
                         <div className="absolute right-4 z-10 mt-2 w-[min(92vw,640px)]">
                           <CatForm
-                            key={`${c.id}:${c.name}:${c.icon}:${c.gender}:${c.power}:${c.factionId ?? ""}:${c.leaderId ?? ""}`}
+                            key={`${c.id}:${c.name}:${c.icon}:${c.gender}:${c.commentSuffix}:${c.power}:${c.factionId ?? ""}:${c.leaderId ?? ""}`}
                             factions={factionOptions}
                             editingCat={{
                               id: c.id,
@@ -108,6 +109,7 @@ export default async function AdminPage() {
                               iconUrl: /^https?:\/\//i.test(c.icon) ? c.icon : "",
                               currentIcon: c.icon,
                               gender: c.gender,
+                              commentSuffix: c.commentSuffix,
                               power: c.power,
                               factionId: c.factionId,
                               role: c.factionId ? (c.leaderId === c.id ? "leader" : "follower") : null,
@@ -150,17 +152,23 @@ export default async function AdminPage() {
                   {r.targetType === "opinion" && (
                     <form action={moderateOpinionAction}>
                       <input type="hidden" name="opinionId" value={r.targetId} />
-                      <button type="submit" className="btn btn-danger !px-3 !py-1 text-xs">
+                      <ConfirmSubmitButton
+                        message="この意見を削除しますか？"
+                        className="btn btn-danger !px-3 !py-1 text-xs"
+                      >
                         意見を削除
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   )}
                   {r.targetType === "proposal" && (
                     <form action={moderateProposalAction}>
                       <input type="hidden" name="proposalId" value={r.targetId} />
-                      <button type="submit" className="btn btn-danger !px-3 !py-1 text-xs">
+                      <ConfirmSubmitButton
+                        message="この議題と投稿済みの意見を削除しますか？"
+                        className="btn btn-danger !px-3 !py-1 text-xs"
+                      >
                         議題を削除
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   )}
                   <form action={resolveReportAction}>

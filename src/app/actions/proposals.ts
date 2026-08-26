@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   cats,
   events,
@@ -18,7 +18,11 @@ import { getDb } from "@/db";
 import { getSession, requireUser } from "@/lib/auth";
 import { executeTurn } from "@/lib/rules/turn";
 import { beginRunoff } from "@/lib/catchup";
-import { OPINION_RATE_LIMIT_MS } from "@/lib/constants";
+import {
+  MAX_PROPOSAL_PARAMETERS,
+  OPINION_DAILY_LIMIT,
+  OPINION_DAILY_WINDOW_MS,
+} from "@/lib/constants";
 import { opinionContentSchema, parseDateTimeLocal, uuidSchema } from "@/lib/validation";
 import { createInitialProposalSimulationState, serializeProposalSimulationState } from "@/lib/proposal-state";
 
@@ -41,8 +45,7 @@ export async function createProposalAction(
   const paramNames = formData
     .getAll("paramName")
     .map((v) => String(v).trim())
-    .filter((v) => v.length > 0)
-    .slice(0, 5);
+    .filter((v) => v.length > 0);
 
   if (!title || title.length > 120) {
     redirect("/proposals/new?error=title");
@@ -57,6 +60,9 @@ export async function createProposalAction(
     redirect("/proposals/new?error=deadline");
   }
   if (paramNames.length === 0) {
+    redirect("/proposals/new?error=params");
+  }
+  if (paramNames.length > MAX_PROPOSAL_PARAMETERS) {
     redirect("/proposals/new?error=params");
   }
   if (new Set(paramNames).size !== paramNames.length) {
@@ -153,22 +159,31 @@ export async function postOpinionAction(
   }
 
   const inserted = await getDb().transaction(async (tx) => {
-    // Serialize the rate-limit check and insert for concurrent submissions.
+    // Serialize the daily rate-limit check and insert for concurrent submissions.
     await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${`opinion:${session.userId}:${proposalId}`}))`,
+      sql`select pg_advisory_xact_lock(hashtext(${`opinion-daily:${session.userId}`}))`,
     );
+    const dailySince = new Date(Date.now() - OPINION_DAILY_WINDOW_MS);
     const recent = await tx
       .select({ createdAt: opinions.createdAt })
       .from(opinions)
-      .where(and(eq(opinions.proposalId, proposalId), eq(opinions.authorId, session.userId)))
+      .where(
+        and(
+          eq(opinions.authorId, session.userId),
+          gte(opinions.createdAt, dailySince),
+        ),
+      )
       .orderBy(desc(opinions.createdAt))
-      .limit(1);
-    const last = recent[0]?.createdAt;
-    if (last && Date.now() - last.getTime() < OPINION_RATE_LIMIT_MS) {
-      const waitMin = Math.ceil(
-        (OPINION_RATE_LIMIT_MS - (Date.now() - last.getTime())) / 60000,
-      );
-      return { opinion: null, error: `連続投稿を防ぐため、あと${waitMin}分待ってから投稿してください` } as const;
+      .limit(OPINION_DAILY_LIMIT);
+    if (recent.length >= OPINION_DAILY_LIMIT) {
+      const oldest = recent[recent.length - 1]?.createdAt;
+      const waitMin = oldest
+        ? Math.max(1, Math.ceil((oldest.getTime() + OPINION_DAILY_WINDOW_MS - Date.now()) / 60000))
+        : 0;
+      return {
+        opinion: null,
+        error: `直近24時間の投稿上限（${OPINION_DAILY_LIMIT}件）に達しています。あと約${waitMin}分後に投稿できます`,
+      } as const;
     }
     const [opinion] = await tx
       .insert(opinions)
@@ -284,4 +299,43 @@ export async function deleteOpinionAction(formData: FormData): Promise<void> {
     .set({ deletedAt: new Date(), eligible: false })
     .where(eq(opinions.id, opinionId));
   revalidatePath(`/proposals/${op.proposalId}`);
+  revalidatePath("/");
+  revalidatePath("/admin");
+}
+
+export async function deleteProposalAction(formData: FormData): Promise<void> {
+  const proposalId = String(formData.get("proposalId") ?? "");
+  if (!uuidSchema.safeParse(proposalId).success) return;
+
+  const session = await getSession();
+  if (!session) return;
+
+  const db = getDb();
+  const proposal = (
+    await db.select().from(proposals).where(eq(proposals.id, proposalId)).limit(1)
+  )[0];
+  if (
+    !proposal ||
+    proposal.deletedAt ||
+    (session.role !== "admin" && proposal.authorId !== session.userId)
+  ) {
+    return;
+  }
+
+  const deletedAt = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(proposals)
+      .set({ deletedAt, status: "CLOSED", turnLockedUntil: null })
+      .where(eq(proposals.id, proposalId));
+    await tx
+      .update(opinions)
+      .set({ deletedAt, eligible: false })
+      .where(and(eq(opinions.proposalId, proposalId), isNull(opinions.deletedAt)));
+  });
+
+  revalidatePath("/");
+  revalidatePath(`/proposals/${proposalId}`);
+  revalidatePath("/admin");
+  redirect("/");
 }

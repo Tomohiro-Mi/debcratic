@@ -1,5 +1,6 @@
 import { deleteOpinionAction, reportTargetAction } from "@/app/actions/proposals";
 import { ScoreChip } from "@/components/ScoreChip";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { VoteCard, type VoteView } from "@/components/VoteCard";
 import { computeOpinionStats } from "@/lib/rules/points";
 import { formatDate, scoreLabel } from "@/lib/format";
@@ -50,32 +51,30 @@ export function OpinionCard({
           <p className="mt-1 text-xs text-stone-400">
             {authorName ?? "匿名"} · {formatDate(createdAt)}
           </p>
-          {(canDelete || true) && (
-            <div className="mt-1 flex gap-2">
-              {canDelete && (
-                <form action={deleteOpinionAction}>
-                  <input type="hidden" name="opinionId" value={opinionId} />
-                  <button
-                    type="submit"
-                    className="text-[10px] text-red-300 hover:text-red-500"
-                  >
-                    削除
-                  </button>
-                </form>
-              )}
-              <form action={reportTargetAction}>
-                <input type="hidden" name="targetType" value="opinion" />
-                <input type="hidden" name="targetId" value={opinionId} />
-                <input type="hidden" name="reason" value="" />
-                <button
-                  type="submit"
-                  className="text-[10px] text-stone-300 hover:text-orange-400"
+          <div className="mt-1 flex gap-2">
+            {canDelete && (
+              <form action={deleteOpinionAction}>
+                <input type="hidden" name="opinionId" value={opinionId} />
+                <ConfirmSubmitButton
+                  message="この意見を削除しますか？"
+                  className="text-[10px] text-red-300 hover:text-red-500"
                 >
-                  通報
-                </button>
+                  削除
+                </ConfirmSubmitButton>
               </form>
-            </div>
-          )}
+            )}
+            <form action={reportTargetAction}>
+              <input type="hidden" name="targetType" value="opinion" />
+              <input type="hidden" name="targetId" value={opinionId} />
+              <input type="hidden" name="reason" value="" />
+              <button
+                type="submit"
+                className="text-[10px] text-stone-300 hover:text-orange-400"
+              >
+                通報
+              </button>
+            </form>
+          </div>
         </div>
         <div className="shrink-0 text-right">
           <p

@@ -30,11 +30,13 @@ import {
 } from "@/lib/settings";
 import { testLlmConnection } from "@/lib/llm";
 import {
+  COMMENT_SUFFIXES,
   DEFAULTS,
   FOLLOWER_MAX_POWER,
   LEADER_POWER_THRESHOLD,
   MAX_VOTE_INTERVAL_MINUTES,
   MIN_VOTE_INTERVAL_MINUTES,
+  type CommentSuffix,
 } from "@/lib/constants";
 import { validateCatIconFile } from "@/lib/image-upload";
 import { nextVoteDue } from "@/lib/scheduler";
@@ -79,6 +81,10 @@ export async function upsertCatAction(
   const gender = ["オス", "メス", "セン"].includes(genderRaw)
     ? (genderRaw as "オス" | "メス" | "セン")
     : null;
+  const commentSuffixRaw = String(formData.get("commentSuffix") ?? "普通").trim();
+  const commentSuffix = COMMENT_SUFFIXES.includes(commentSuffixRaw as CommentSuffix)
+    ? (commentSuffixRaw as CommentSuffix)
+    : "普通";
   const powerRaw = Number(formData.get("power") ?? 1);
   const power = Number.isFinite(powerRaw)
     ? Math.max(1, Math.min(10, Math.round(powerRaw)))
@@ -172,7 +178,7 @@ export async function upsertCatAction(
             `);
           }
         } else {
-          await tx.insert(cats).values({ id, name, icon, gender, power });
+          await tx.insert(cats).values({ id, name, icon, gender, commentSuffix, power });
         }
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
@@ -277,6 +283,7 @@ export async function upsertCatAction(
           name,
           icon,
           gender,
+          commentSuffix,
           power,
           factionId: desiredFaction?.id ?? null,
           leaderId: desiredFaction?.leaderId ?? null,
@@ -474,6 +481,7 @@ export async function moderateOpinionAction(formData: FormData): Promise<void> {
     .where(eq(opinions.id, opinionId));
   revalidatePath("/admin");
   revalidatePath(`/proposals/${op.proposalId}`);
+  revalidatePath("/");
 }
 
 export async function moderateProposalAction(formData: FormData): Promise<void> {
@@ -483,12 +491,20 @@ export async function moderateProposalAction(formData: FormData): Promise<void> 
     await getDb().select().from(proposals).where(eq(proposals.id, proposalId)).limit(1)
   )[0];
   if (!p) return;
-  await getDb()
-    .update(proposals)
-    .set({ deletedAt: new Date(), status: "CLOSED" })
-    .where(eq(proposals.id, proposalId));
+  const deletedAt = new Date();
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(proposals)
+      .set({ deletedAt, status: "CLOSED", turnLockedUntil: null })
+      .where(eq(proposals.id, proposalId));
+    await tx
+      .update(opinions)
+      .set({ deletedAt, eligible: false })
+      .where(and(eq(opinions.proposalId, proposalId), isNull(opinions.deletedAt)));
+  });
   revalidatePath("/admin");
   revalidatePath("/");
+  revalidatePath(`/proposals/${proposalId}`);
 }
 
 export async function toggleBanUserAction(formData: FormData): Promise<void> {

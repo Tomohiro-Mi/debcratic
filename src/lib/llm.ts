@@ -1,12 +1,19 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { DEFAULTS, PROMPT_VERSION, SCORE_MIN, SCORE_MAX } from "@/lib/constants";
+import {
+  DEFAULTS,
+  type CommentSuffix,
+  PROMPT_VERSION,
+  SCORE_MIN,
+  SCORE_MAX,
+} from "@/lib/constants";
 import { SeededRandom } from "@/lib/rng";
 
 export interface LLMCatContext {
   id: string;
   name: string;
   power: number;
+  commentSuffix: CommentSuffix;
   topicParams: Record<string, number>;
   factionName: string | null;
   leaderName: string | null;
@@ -66,7 +73,11 @@ function buildSystemPrompt(): string {
 - 猫の議題パラメータ値と意見の方向性の距離が近いほど賛同しやすい
 - 派閥に所属する猫はリーダーの立場に引っ張られやすい
 - 過去に強い立場を示していた場合、急激な変更は避けがたい
-- reason は猫らしい一人称の発言として日本語で40字程度書く(語尾は「にゃ」など)
+- reason は猫らしい一人称の発言として日本語で40字程度書き、その猫ごとに指定された語尾で終える
+- 各猫は独立して評価する。全員が同じ賛否になるのは、全員の価値観・派閥・履歴から同じ結論になる場合だけにする
+- 意見に自動的に賛成してはいけない。実現可能性、安全性、費用、目的への適合性、意図しない悪影響、前提の妥当性を必ず検討する
+- 極端・非現実的・危険な提案は、理由を明示して大きく減点する。短い意見でも、書かれている内容を額面通りに評価する
+- score は、強い賛成(+8〜+10)、賛成(+3〜+7)、迷い(-1〜+1)、反対(-3〜-7)、到底受け入れられない(-8〜-10)の基準で校正する
 - factors には判断要因を {label, delta} 形式で列挙する(label例: 価値観との一致, 派閥からの影響, 過去の立場)
 - confidence は0〜1の確信度
 
@@ -87,6 +98,7 @@ function buildUserPrompt(input: LLMVoteInput): string {
       return `  <cat id="${c.id}">
     名前: ${c.name}
     権力: ${c.power}
+    コメント語尾: ${c.commentSuffix}
     所属派閥: ${c.factionName ?? "無所属"}
     リーダー: ${c.leaderName ?? "なし"}
     議題パラメータ: ${params || "なし"}
@@ -125,6 +137,12 @@ export const POPULAR_MODELS = [
   "mistralai/mistral-small-24b-instruct-2501",
   "openai/gpt-oss-20b:free",
 ] as const;
+
+export function applyCommentSuffix(text: string, suffix: CommentSuffix): string {
+  if (suffix === "普通") return text;
+  const body = text.trim().replace(/[。！？!?]+$/u, "");
+  return `${body.endsWith(suffix) ? body : `${body}${suffix}`}。`;
+}
 
 export async function fetchOpenRouterModels(): Promise<string[]> {
   try {
@@ -179,7 +197,11 @@ export function hashInput(input: LLMVoteInput): string {
   const canonical = JSON.stringify({
     o: input.opinionId,
     t: input.proposalTitle,
+    d: input.proposalDescription,
+    p: input.parameterNames,
+    opinion: input.opinionContent,
     c: input.cats.map((x) => [x.id, x.power, x.factionName, x.topicParams, x.history]),
+    suffixes: input.cats.map((x) => [x.id, x.commentSuffix]),
     s: input.seed,
     v: PROMPT_VERSION,
   });
@@ -289,7 +311,9 @@ async function callOpenRouter(
   const votes: Record<string, VoteOutput> = {};
   for (const cat of input.cats) {
     const v = parsed.votes[cat.id] ?? parsed.votes[cat.name];
-    votes[cat.id] = v ?? { score: 0, reason: "", confidence: 0.5, factors: [] };
+    votes[cat.id] = v
+      ? { ...v, reason: applyCommentSuffix(v.reason, cat.commentSuffix) }
+      : { score: 0, reason: "", confidence: 0.5, factors: [] };
   }
   return votes;
 }
@@ -308,12 +332,13 @@ export function mockVotes(input: LLMVoteInput): Record<string, VoteOutput> {
     const oVals = input.parameterNames
       .map((p) => opinionVec[p] ?? 5)
       .filter((v) => v > 0);
-    let dist = 0;
+    let alignment = 0;
     for (let i = 0; i < Math.max(vals.length, 1); i++) {
-      dist += ((vals[i] ?? 5) - (oVals[i] ?? 5)) ** 2;
+      const catSignal = ((vals[i] ?? 5) - 5.5) / 4.5;
+      const opinionSignal = ((oVals[i] ?? 5) - 5.5) / 3.5;
+      alignment += catSignal * opinionSignal;
     }
-    dist = Math.sqrt(dist / Math.max(vals.length, 1));
-    const alignment = 1 - dist / 8;
+    alignment /= Math.max(vals.length, 1);
 
     const leaderHist = cat.history.length > 0 ? cat.history[cat.history.length - 1].score : null;
     const factionPull =
@@ -321,32 +346,41 @@ export function mockVotes(input: LLMVoteInput): Record<string, VoteOutput> {
     const prevScore = cat.history.length > 0 ? cat.history[cat.history.length - 1].score : 0;
     const inertia = prevScore * 0.35;
 
-    const raw = alignment * 14 + factionPull + inertia + rng.float(-4.5, 4.5);
+    const opinionText = input.opinionContent;
+    const safetyPenalty = /(地獄|あの世|冥界|死者の国|戦場|殺人|自殺|毒|爆破|不可能|無理)/u.test(opinionText)
+      ? -3.5
+      : 0;
+    const textSignal = /(賛成|最高|便利|安全|節約|改善|快適|推進)/u.test(opinionText)
+      ? 1.5
+      : /(反対|危険|最悪|中止|禁止|心配)/u.test(opinionText)
+        ? -1.5
+        : 0;
+    const raw = alignment * 8 + textSignal + safetyPenalty + factionPull + inertia + rng.float(-3.5, 3.5);
     const score = Math.max(SCORE_MIN, Math.min(SCORE_MAX, Math.round(raw)));
     const stanceLabel = score >= 2 ? "for" : score <= -2 ? "against" : "neutral";
     const topParam = input.parameterNames[0] ?? "全体";
 
     const reasons: Record<string, string[]> = {
       for: [
-        `${topParam}の観点からいいと思うにゃ。応援するにゃ。`,
-        `これは賛成だにゃ。${cat.name}は納得したにゃ。`,
-        `悪くないにゃ。むしろ良い方向だにゃ。`,
+        `${topParam}の観点から良いと思う。応援したい。`,
+        `これは賛成。${cat.name}は納得した。`,
+        `悪くない。むしろ良い方向だと思う。`,
       ],
       neutral: [
-        `うーん、判断が難しいにゃ。もう少し見極めるにゃ。`,
-        `${topParam}だけで決められないにゃ。`,
-        `保留しておくにゃ。状況を見るにゃ。`,
+        `うーん、判断が難しい。もう少し見極めたい。`,
+        `${topParam}だけで決められない。`,
+        `いったん保留して、状況を見たい。`,
       ],
       against: [
-        `${topParam}への心配が大きいにゃ。反対するにゃ。`,
-        `これは受け入れがたいにゃ。`,
-        `${cat.name}としては賛成できないにゃ。`,
+        `${topParam}への心配が大きい。反対したい。`,
+        `これは受け入れがたい。`,
+        `${cat.name}としては賛成できない。`,
       ],
     };
     const factorBase = Math.round(Math.abs(score) / 3);
     votes[cat.id] = {
       score,
-      reason: rng.pick(reasons[stanceLabel]),
+      reason: applyCommentSuffix(rng.pick(reasons[stanceLabel]), cat.commentSuffix),
       confidence: Number(rng.float(0.55, 0.95).toFixed(2)),
       factors: [
         { label: "価値観との一致", delta: Math.sign(score) * factorBase },

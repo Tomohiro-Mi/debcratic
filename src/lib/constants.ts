@@ -11,7 +11,10 @@ export const STANCE_AGAINST_MAX = -2;
 export const SCORE_MIN = -10;
 export const SCORE_MAX = 10;
 
-export const PROMPT_VERSION = "vote-v1";
+export const PROMPT_VERSION = "vote-v2-balanced";
+
+export const COMMENT_SUFFIXES = ["ニャ", "ピィ", "のね", "普通"] as const;
+export type CommentSuffix = (typeof COMMENT_SUFFIXES)[number];
 
 export const DEFAULTS = {
   llmModel: "openai/gpt-4o-mini",
@@ -32,7 +35,10 @@ export const DEFAULTS = {
 export const MIN_VOTE_INTERVAL_MINUTES = 1;
 export const MAX_VOTE_INTERVAL_MINUTES = 365 * 24 * 60;
 
-export const OPINION_RATE_LIMIT_MS = 10 * 60 * 1000;
+export const OPINION_DAILY_LIMIT = 10;
+export const OPINION_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export const MAX_PROPOSAL_PARAMETERS = 20;
 
 export const TURN_LOCK_SECONDS = 40;
 export const MAX_CATCHUP_TURNS = 24;

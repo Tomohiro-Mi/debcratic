@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   cats,
   events,
@@ -287,9 +287,19 @@ export async function getCatProfile(
     : null;
 
   const powerEvents = await db
-    .select()
+    .select({
+      id: events.id,
+      turnNumber: events.turnNumber,
+      payload: events.payload,
+    })
     .from(events)
-    .where(inArray(events.type, ["PowerIncreased", "PowerDecreased"]))
+    .leftJoin(proposals, eq(events.proposalId, proposals.id))
+    .where(
+      and(
+        inArray(events.type, ["PowerIncreased", "PowerDecreased"]),
+        or(isNull(events.proposalId), isNull(proposals.deletedAt)),
+      ),
+    )
     .orderBy(asc(events.id))
     .limit(2000);
   const myPowerEvents = powerEvents.filter(
@@ -312,7 +322,13 @@ export async function getCatProfile(
         .innerJoin(turns, eq(votes.turnId, turns.id))
         .innerJoin(opinions, eq(votes.opinionId, opinions.id))
         .innerJoin(proposals, eq(opinions.proposalId, proposals.id))
-        .where(eq(votes.catId, catId))
+        .where(
+          and(
+            eq(votes.catId, catId),
+            isNull(opinions.deletedAt),
+            isNull(proposals.deletedAt),
+          ),
+        )
         .orderBy(desc(votes.createdAt))
         .limit(20)
     : [];
@@ -329,7 +345,12 @@ export async function getCatProfile(
       })
       .from(events)
       .leftJoin(proposals, eq(events.proposalId, proposals.id))
-      .where(inArray(events.type, types))
+      .where(
+        and(
+          inArray(events.type, types),
+          or(isNull(events.proposalId), isNull(proposals.deletedAt)),
+        ),
+      )
       .orderBy(desc(events.id))
       .limit(600);
 

@@ -11,6 +11,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { CommentSuffix } from "@/lib/constants";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -28,6 +29,7 @@ export const cats = pgTable("cats", {
   name: text("name").notNull(),
   icon: text("icon").notNull().default("🐱"),
   gender: text("gender").$type<"オス" | "メス" | "セン">().notNull().default("セン"),
+  commentSuffix: text("comment_suffix").$type<CommentSuffix>().notNull().default("普通"),
   power: integer("power").notNull().default(1),
   factionId: uuid("faction_id"),
   leaderId: text("leader_id"),

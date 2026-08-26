@@ -231,6 +231,7 @@ export async function executeTurn(opts: {
             id: c.id,
             name: c.name,
             power: stateCat.power,
+            commentSuffix: c.commentSuffix,
             topicParams: cvByCat.get(c.id) ?? {},
             factionName: myFaction?.name ?? null,
             leaderName,

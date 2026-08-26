@@ -4,13 +4,14 @@ import { requireUser } from "@/lib/auth";
 import { getProposalDetail } from "@/lib/queries";
 import { processProposalCatchup } from "@/lib/catchup";
 import { estimateOpinionParams } from "@/lib/bayes";
-import { formatDate } from "@/lib/format";
+import { formatDate, scoreLabel } from "@/lib/format";
 import { StatusChip } from "@/components/StatusChip";
 import { OpinionForm } from "@/components/OpinionForm";
 import { OpinionCard } from "@/components/OpinionCard";
 import { TimelineList } from "@/components/TimelineList";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { startRunoffAction } from "@/app/actions/proposals";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { deleteProposalAction, startRunoffAction } from "@/app/actions/proposals";
 import type { VoteView } from "@/components/VoteCard";
 import { CatAvatar } from "@/components/CatAvatar";
 
@@ -108,6 +109,17 @@ export default async function ProposalPage({
               </span>
               <span>💬 意見 {d.opinions.length}件</span>
             </div>
+            {isAuthorOrAdmin && (
+              <form action={deleteProposalAction} className="mt-4 border-t border-orange-100 pt-3">
+                <input type="hidden" name="proposalId" value={d.proposal.id} />
+                <ConfirmSubmitButton
+                  message="この議題と投稿済みの意見を削除しますか？"
+                  className="btn btn-danger !px-3 !py-1.5 text-xs"
+                >
+                  議題を削除
+                </ConfirmSubmitButton>
+              </form>
+            )}
             {d.params.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <span className="chip bg-orange-50 text-orange-600">評価軸</span>
@@ -119,6 +131,40 @@ export default async function ProposalPage({
               </div>
             )}
           </header>
+
+          {ranked.length > 0 && (
+            <section className="card">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="section-title !mb-0">🏆 Pointランキング</h2>
+                <span className="text-[11px] text-stone-400">Point順</span>
+              </div>
+              <ol className="mt-3 space-y-2">
+                {ranked.slice(0, 5).map(({ o }, i) => (
+                  <li key={o.id}>
+                    <Link
+                      href={`#op-${o.id}`}
+                      className="flex items-center gap-2 rounded-xl border border-orange-50 px-3 py-2 transition hover:border-orange-200 hover:bg-orange-50/40"
+                    >
+                      <span className="w-8 shrink-0 text-center text-sm font-black text-stone-400">
+                        {i + 1}位
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-stone-700">
+                        {o.content}
+                      </span>
+                      <span className="shrink-0 text-sm font-black tabular-nums text-orange-600">
+                        {scoreLabel(o.point)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+              {ranked.length > 5 && (
+                <p className="mt-2 text-right text-[11px] text-stone-400">
+                  下に全{ranked.length}件の詳細を表示しています
+                </p>
+              )}
+            </section>
+          )}
 
           {d.proposal.status === "RUNOFF_PENDING" && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -160,7 +206,7 @@ export default async function ProposalPage({
           )}
 
           <section>
-            <h2 className="section-title">📊 意見ランキング</h2>
+            <h2 className="section-title">📊 意見の詳細</h2>
             {ranked.length === 0 ? (
               <div className="card py-10 text-center text-sm text-stone-400">
                 最初の意見を投稿して、猫社会を動かそう。

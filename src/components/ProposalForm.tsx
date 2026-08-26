@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { createProposalAction } from "@/app/actions/proposals";
 import { CatAvatar } from "@/components/CatAvatar";
+import { MAX_PROPOSAL_PARAMETERS } from "@/lib/constants";
 
 export interface CatOption {
   id: string;
@@ -48,7 +49,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
 
   const addParam = (randomize: boolean) => {
     setParamRows((prev) => {
-      if (prev.length >= 5) return prev;
+      if (prev.length >= MAX_PROPOSAL_PARAMETERS) return prev;
       const row = createParamRow(nextParamId.current++, cats, randomize);
       return [...prev, row];
     });
@@ -118,7 +119,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
       </div>
 
       <div className="card">
-        <p className="section-title">📏 評価軸パラメータ（1〜5個）</p>
+        <p className="section-title">📏 評価軸パラメータ（1〜20個）</p>
         <p className="mb-3 text-xs text-stone-500">
           この議題で猫たちが何を重視して評価するかの軸です。各猫の値はあなたが設定します。
         </p>
@@ -148,7 +149,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
           <button
             type="button"
             onClick={() => addParam(false)}
-            disabled={paramRows.length >= 5}
+            disabled={paramRows.length >= MAX_PROPOSAL_PARAMETERS}
             className="btn btn-ghost !px-3 !py-1.5 text-xs"
           >
             ＋ 軸を追加
@@ -156,7 +157,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
           <button
             type="button"
             onClick={() => addParam(true)}
-            disabled={paramRows.length >= 5}
+            disabled={paramRows.length >= MAX_PROPOSAL_PARAMETERS}
             className="btn btn-ghost !px-3 !py-1.5 text-xs"
           >
             🎲 ランダム初期化して追加

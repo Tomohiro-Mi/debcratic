@@ -31,7 +31,7 @@ export function OpinionForm({ proposalId }: { proposalId: string }) {
       />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-stone-400">
-          同一議題への投稿は10分間隔に制限されています
+          投稿はユーザーごとに直近24時間で最大10件です
         </p>
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? "猫たちが投票中…" : "投稿する 🐾"}
