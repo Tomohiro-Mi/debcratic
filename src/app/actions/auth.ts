@@ -1,21 +1,29 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import {
   createSessionCookie,
   destroySessionCookie,
   findUserByEmail,
+  getSession,
   hashPassword,
   verifyPassword,
 } from "@/lib/auth";
-import { registerSchema, loginSchema } from "@/lib/validation";
+import {
+  changePasswordSchema,
+  loginSchema,
+  registerSchema,
+  updateAccountNameSchema,
+} from "@/lib/validation";
 import { users } from "@/db/schema";
 import { getDb } from "@/db";
 import { safeRelativePath } from "@/lib/security";
 
 export interface AuthActionState {
   error?: string;
+  success?: string;
 }
 
 function safeNext(fd: FormData): string {
@@ -71,7 +79,7 @@ export async function registerAction(
     return { error: "このメールアドレスは既に登録されています" };
   }
   const user = created.user;
-  await createSessionCookie(user.id, user.role, user.name);
+  await createSessionCookie(user.id, user.role, user.name, user.sessionVersion);
   redirect(safeNext(formData));
 }
 
@@ -93,8 +101,98 @@ export async function loginAction(
   if (user.bannedAt) {
     return { error: "このアカウントは停止されています" };
   }
-  await createSessionCookie(user.id, user.role, user.name);
+  await createSessionCookie(user.id, user.role, user.name, user.sessionVersion);
   redirect(safeNext(formData));
+}
+
+async function findCurrentUser(userId: string) {
+  return (
+    await getDb()
+      .select({
+        id: users.id,
+        name: users.name,
+        role: users.role,
+        passwordHash: users.passwordHash,
+        sessionVersion: users.sessionVersion,
+      })
+      .from(users)
+      .where(sql`${users.id} = ${userId}`)
+      .limit(1)
+  )[0] ?? null;
+}
+
+export async function updateAccountNameAction(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const session = await getSession();
+  if (!session) return { error: "ログインが必要です" };
+
+  const parsed = updateAccountNameSchema.safeParse({
+    name: formData.get("name"),
+    currentPassword: formData.get("currentPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "入力内容を確認してください" };
+  }
+
+  const user = await findCurrentUser(session.userId);
+  if (!user || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) {
+    return { error: "現在のパスワードが違います" };
+  }
+
+  if (user.name === parsed.data.name) {
+    return { success: "ユーザー名は変更されていません" };
+  }
+
+  await getDb().update(users).set({ name: parsed.data.name }).where(sql`${users.id} = ${user.id}`);
+  await createSessionCookie(user.id, user.role, parsed.data.name, user.sessionVersion);
+  revalidatePath("/", "layout");
+  return { success: "ユーザー名を変更しました" };
+}
+
+export async function changePasswordAction(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const session = await getSession();
+  if (!session) return { error: "ログインが必要です" };
+
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "入力内容を確認してください" };
+  }
+
+  const user = await findCurrentUser(session.userId);
+  if (!user || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) {
+    return { error: "現在のパスワードが違います" };
+  }
+  if (await verifyPassword(parsed.data.newPassword, user.passwordHash)) {
+    return { error: "現在と異なるパスワードを設定してください" };
+  }
+
+  const [updated] = await getDb()
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(parsed.data.newPassword),
+      sessionVersion: sql`${users.sessionVersion} + 1`,
+    })
+    .where(sql`${users.id} = ${user.id}`)
+    .returning({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      sessionVersion: users.sessionVersion,
+    });
+  if (!updated) return { error: "パスワードの変更に失敗しました" };
+
+  await createSessionCookie(updated.id, updated.role, updated.name, updated.sessionVersion);
+  revalidatePath("/", "layout");
+  return { success: "パスワードを変更しました。他の端末のログインも終了しました" };
 }
 
 export async function logoutAction() {

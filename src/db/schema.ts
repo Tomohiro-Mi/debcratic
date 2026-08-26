@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  sessionVersion: integer("session_version").notNull().default(0),
   role: text("role").$type<"user" | "admin">().notNull().default("user"),
   bannedAt: timestamp("banned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -30,9 +30,13 @@ export async function NavBar() {
         </div>
         {session ? (
           <div className="flex items-center gap-2 text-sm">
-            <span className="hidden font-bold text-stone-600 sm:inline">
+            <Link
+              href="/account"
+              aria-label="アカウント設定"
+              className="font-bold text-stone-600 hover:text-orange-600"
+            >
               {session.name}
-            </span>
+            </Link>
             <form action={logoutAction}>
               <button type="submit" className="btn btn-ghost !px-3 !py-1.5 text-xs">
                 ログアウト

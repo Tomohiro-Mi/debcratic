@@ -19,10 +19,16 @@ export interface SessionInfo {
   userId: string;
   role: "user" | "admin";
   name: string;
+  sessionVersion: number;
 }
 
-export async function createSessionCookie(userId: string, role: "user" | "admin", name: string) {
-  const token = await new SignJWT({ role, name })
+export async function createSessionCookie(
+  userId: string,
+  role: "user" | "admin",
+  name: string,
+  sessionVersion = 0,
+) {
+  const token = await new SignJWT({ role, name, sessionVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -52,16 +58,28 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
     if (!payload.sub) return null;
     const user = (
       await getDb()
-        .select({ id: users.id, role: users.role, name: users.name, bannedAt: users.bannedAt })
+        .select({
+          id: users.id,
+          role: users.role,
+          name: users.name,
+          bannedAt: users.bannedAt,
+          sessionVersion: users.sessionVersion,
+        })
         .from(users)
         .where(eq(users.id, payload.sub))
         .limit(1)
     )[0];
     if (!user || user.bannedAt) return null;
+    const tokenSessionVersion =
+      typeof payload.sessionVersion === "number" && Number.isSafeInteger(payload.sessionVersion)
+        ? payload.sessionVersion
+        : 0;
+    if (tokenSessionVersion !== user.sessionVersion) return null;
     return {
       userId: user.id,
       role: user.role,
       name: user.name,
+      sessionVersion: user.sessionVersion,
     };
   } catch {
     return null;

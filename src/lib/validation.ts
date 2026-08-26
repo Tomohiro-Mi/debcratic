@@ -11,6 +11,27 @@ export const loginSchema = z.object({
   password: z.string().min(1, "パスワードを入力してください"),
 });
 
+export const updateAccountNameSchema = z.object({
+  name: z.string().trim().min(1, "ユーザー名を入力してください").max(30),
+  currentPassword: z.string().min(1, "現在のパスワードを入力してください").max(100),
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "現在のパスワードを入力してください").max(100),
+    newPassword: z.string().min(8, "新しいパスワードは8文字以上にしてください").max(100),
+    confirmPassword: z.string().min(1, "新しいパスワード（確認）を入力してください").max(100),
+  })
+  .superRefine(({ newPassword, confirmPassword }, ctx) => {
+    if (newPassword !== confirmPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmPassword"],
+        message: "新しいパスワードが一致しません",
+      });
+    }
+  });
+
 export const opinionContentSchema = z
   .string()
   .trim()
