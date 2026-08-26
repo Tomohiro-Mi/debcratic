@@ -11,7 +11,11 @@ export const STANCE_AGAINST_MAX = -2;
 export const SCORE_MIN = -10;
 export const SCORE_MAX = 10;
 
-export const PROMPT_VERSION = "vote-v3-polarized";
+export const VOTE_ENGINE_VERSION = "bayes-v1";
+export const OPINION_SEMANTIC_PROMPT_VERSION = "opinion-params-v1";
+export const COMMENT_PROMPT_VERSION = "vote-comment-v1";
+/** @deprecated Use the dedicated semantic/comment versions above. */
+export const PROMPT_VERSION = VOTE_ENGINE_VERSION;
 
 export const COMMENT_SUFFIXES = ["ニャ", "ピィ", "のね", "普通"] as const;
 export type CommentSuffix = (typeof COMMENT_SUFFIXES)[number];
@@ -19,6 +23,8 @@ export const SILENT_CAT_COMMENT = "……。";
 
 export const DEFAULTS = {
   llmModel: "openai/gpt-4o-mini",
+  opinionModel: "google/gemini-2.5-flash",
+  commentModel: "openai/gpt-4o-mini",
   temperature: 0.7,
   exilePenaltyProb: 0.7,
   changeWindow: 5,

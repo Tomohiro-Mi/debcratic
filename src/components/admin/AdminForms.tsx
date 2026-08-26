@@ -240,6 +240,8 @@ export function SettingsForm({
 }: {
   s: {
     llmModel: string;
+    opinionModel: string;
+    commentModel: string;
     temperature: number;
     exilePenaltyProb: number;
     changeWindow: number;
@@ -332,17 +334,30 @@ export function SettingsForm({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="label">使用モデル</label>
+          <div>
+            <label className="label">意見の意味解析モデル</label>
             <input
-              name="llmModel"
-              defaultValue={s.llmModel}
+              name="opinionModel"
+              defaultValue={s.opinionModel}
+              className="input"
+              list="model-options"
+              placeholder="google/gemini-2.5-flash"
+            />
+            <p className="mt-1 text-[10px] text-stone-400">
+              投稿時に評価軸の値を推定するモデルです。
+            </p>
+          </div>
+          <div>
+            <label className="label">投票コメント生成モデル</label>
+            <input
+              name="commentModel"
+              defaultValue={s.commentModel}
               className="input"
               list="model-options"
               placeholder="openai/gpt-4o-mini"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              入力して候補から選択、または自由入力（OpenRouterのモデルID）。
+              確定した投票値を猫の発言へ変換するモデルです。
             </p>
           </div>
           {field("temperature", "temperature", s.temperature, { step: "0.1" })}
@@ -371,11 +386,11 @@ export function SettingsForm({
       <form action={testAction} className="card">
         <p className="section-title">🔌 接続テスト</p>
         <p className="text-xs text-stone-500">
-          保存済みのAPIキーとモデルでOpenRouterに実際に接続します。先に「設定を保存」してください。
-          現在の状態:{" "}
+          保存済みのAPIキーと2つのモデルでOpenRouterに実際に接続します。先に「設定を保存」してください。
+          現在の状態: {" "}
           <b>
             {s.hasApiKey
-              ? `キーあり(${s.apiKeySource === "db" ? "DB" : "環境変数"}) / ${s.llmModel}`
+              ? `キーあり(${s.apiKeySource === "db" ? "DB" : "環境変数"}) / 解析: ${s.opinionModel} / コメント: ${s.commentModel}`
               : "キーなし（デモモード）"}
           </b>
         </p>

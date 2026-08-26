@@ -22,6 +22,8 @@ const INTERVAL_SETTING_IDS = [
 
 export interface EffectiveSettings {
   llmModel: string;
+  opinionModel: string;
+  commentModel: string;
   temperature: number;
   exilePenaltyProb: number;
   changeWindow: number;
@@ -44,6 +46,10 @@ export interface EffectiveSettings {
 export function envSettings(): Partial<EffectiveSettings> {
   const s: Partial<EffectiveSettings> = {};
   if (process.env.OPENROUTER_MODEL) s.llmModel = process.env.OPENROUTER_MODEL;
+  if (process.env.OPINION_INTERPRETER_MODEL) {
+    s.opinionModel = process.env.OPINION_INTERPRETER_MODEL;
+  }
+  if (process.env.VOTE_COMMENT_MODEL) s.commentModel = process.env.VOTE_COMMENT_MODEL;
   return s;
 }
 
@@ -79,12 +85,18 @@ export async function getEffectiveSettings(): Promise<EffectiveSettings> {
     legacyInterval ??
     DEFAULTS.voteIntervalMinutes;
 
+  const environment = envSettings();
+  const legacyModel = row?.llmModel ?? environment.llmModel ?? DEFAULTS.llmModel;
+  const opinionModel = row?.opinionModel ?? environment.opinionModel ?? legacyModel;
+  const commentModel = row?.commentModel ?? environment.commentModel ?? legacyModel;
   const dbKey = row?.llmApiKeyEnc ? decryptSecret(row.llmApiKeyEnc) : null;
   const envKey = process.env.OPENROUTER_API_KEY || null;
   const apiKey = dbKey ?? envKey;
 
   return {
-    llmModel: row?.llmModel ?? envSettings().llmModel ?? DEFAULTS.llmModel,
+    llmModel: commentModel,
+    opinionModel,
+    commentModel,
     temperature: row?.temperature ?? DEFAULTS.temperature,
     exilePenaltyProb: row?.exilePenaltyProb ?? DEFAULTS.exilePenaltyProb,
     changeWindow: row?.changeWindow ?? DEFAULTS.changeWindow,

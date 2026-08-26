@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getProposalDetail } from "@/lib/queries";
 import { processProposalCatchup } from "@/lib/catchup";
-import { estimateOpinionParams } from "@/lib/bayes";
+import { estimateOpinionParams, toParamEstimates } from "@/lib/bayes";
 import { formatDate, scoreLabel } from "@/lib/format";
 import { StatusChip } from "@/components/StatusChip";
 import { OpinionForm } from "@/components/OpinionForm";
@@ -70,7 +70,9 @@ export default async function ProposalPage({
         score: d.latestVotes.get(`${o.id}:${c.id}`)?.score,
       }))
       .filter((s): s is { values: Record<string, number>; score: number } => typeof s.score === "number");
-    const estimates = estimateOpinionParams(samples);
+    const estimates = Object.keys(o.parameterPosterior ?? {}).length > 0
+      ? toParamEstimates(o.parameterPosterior)
+      : estimateOpinionParams(samples);
 
     return { o, votes, estimates };
   });

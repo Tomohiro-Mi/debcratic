@@ -338,8 +338,13 @@ export async function saveSettingsAction(
     return Math.max(min, Math.min(max, n));
   };
 
+  const opinionModel = String(formData.get("opinionModel") ?? "").trim() || DEFAULTS.opinionModel;
+  const commentModel = String(formData.get("commentModel") ?? "").trim() || DEFAULTS.commentModel;
   const values: typeof systemSettings.$inferInsert = {
-    llmModel: String(formData.get("llmModel") ?? "").trim() || null,
+    // Keep llmModel populated for older rows and deployments that still read it.
+    llmModel: commentModel,
+    opinionModel,
+    commentModel,
     temperature: numOrNull("temperature", 0, 2),
     exilePenaltyProb: numOrNull("exilePenaltyProb", 0, 1),
     changeWindow: numOrNull("changeWindow", 1, 50),
@@ -457,11 +462,17 @@ export async function testLlmConnectionAction(
   if (!s.apiKey) {
     return { error: "APIキーが未設定です（現在はデモモードで動作中）" };
   }
-  const result = await testLlmConnection(s.apiKey, s.llmModel);
-  if (result.ok) {
-    return { success: `接続OK: ${result.model} で投票できます 🐾` };
+  const results = await Promise.all([
+    testLlmConnection(s.apiKey, s.opinionModel),
+    testLlmConnection(s.apiKey, s.commentModel),
+  ]);
+  const failed = results.find((result) => !result.ok);
+  if (!failed) {
+    return {
+      success: `接続OK: 意見解析=${s.opinionModel} / コメント=${s.commentModel} 🐾`,
+    };
   }
-  return { error: `接続失敗: ${result.error}` };
+  return { error: `接続失敗: ${failed.error}` };
 }
 
 export async function resolveReportAction(formData: FormData): Promise<void> {

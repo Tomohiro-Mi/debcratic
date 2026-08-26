@@ -125,6 +125,16 @@ export const opinions = pgTable(
       .references(() => proposals.id, { onDelete: "cascade" }),
     authorId: uuid("author_id").references(() => users.id),
     content: text("content").notNull(),
+    parameterPrior: jsonb("parameter_prior")
+      .$type<Record<string, OpinionParameterEstimate>>()
+      .notNull()
+      .default({}),
+    parameterPosterior: jsonb("parameter_posterior")
+      .$type<Record<string, OpinionParameterEstimate>>()
+      .notNull()
+      .default({}),
+    semanticModel: text("semantic_model"),
+    semanticPromptVersion: text("semantic_prompt_version"),
     point: integer("point").notNull().default(0),
     prevPoint: integer("prev_point").notNull().default(0),
     lastVotedAt: timestamp("last_voted_at", { withTimezone: true }),
@@ -152,6 +162,11 @@ export const turns = pgTable(
 );
 
 export type VoteFactor = { label: string; delta: number };
+export type OpinionParameterEstimate = {
+  mean: number;
+  variance: number;
+  confidence: number;
+};
 
 export const votes = pgTable(
   "votes",
@@ -212,6 +227,8 @@ export const llmLogs = pgTable("llm_logs", {
 export const systemSettings = pgTable("system_settings", {
   id: integer("id").primaryKey().default(1),
   llmModel: text("llm_model"),
+  opinionModel: text("opinion_model"),
+  commentModel: text("comment_model"),
   llmApiKeyEnc: text("llm_api_key_enc"),
   temperature: real("temperature"),
   exilePenaltyProb: real("exile_penalty_prob"),

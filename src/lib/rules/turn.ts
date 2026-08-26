@@ -13,8 +13,18 @@ import {
   votes,
 } from "@/db/schema";
 import { getDb } from "@/db";
-import { TURN_LOCK_SECONDS } from "@/lib/constants";
-import { runVote, type LLMCatContext } from "@/lib/llm";
+import { TURN_LOCK_SECONDS, VOTE_ENGINE_VERSION } from "@/lib/constants";
+import {
+  createRuleBasedOpinionParameters,
+  calculateBayesianVotes,
+  updateOpinionPosterior,
+  type OpinionParameterState,
+} from "@/lib/bayes";
+import {
+  generateVoteComments,
+  type CommentGenerationInput,
+  type LLMCatContext,
+} from "@/lib/llm";
 import { nextVoteDue, runoffVoteDue } from "@/lib/scheduler";
 import { stanceOf } from "@/lib/rules/points";
 import {
@@ -235,6 +245,9 @@ export async function executeTurn(opts: {
             topicParams: cvByCat.get(c.id) ?? {},
             factionName: myFaction?.name ?? null,
             leaderName,
+            leaderScore: myFaction
+              ? latest.get(`${op.id}:${myFaction.leaderId}`)?.score ?? null
+              : null,
             history: histRows
               .filter((h) => h.catId === c.id && h.opinionId === op.id)
               .slice(-3)
@@ -242,33 +255,73 @@ export async function executeTurn(opts: {
           };
         });
 
-        const result = await runVote(
-          {
-            opinionId: op.id,
-            proposalTitle: p.title,
-            proposalDescription: p.description,
-            parameterNames: paramRows.map((x) => x.name),
-            opinionContent: op.content,
-            cats: ctxCats,
-            seed: `${seed}:${op.id}`,
-          },
-          {
-            apiKey: settings.apiKey,
-            model: settings.llmModel,
-            temperature: settings.temperature,
-          },
-        );
+        const parameterNames = paramRows.map((x) => x.name);
+        const opinionParameters: OpinionParameterState =
+          Object.keys(op.parameterPosterior ?? {}).length > 0
+            ? op.parameterPosterior
+            : Object.keys(op.parameterPrior ?? {}).length > 0
+              ? op.parameterPrior
+              : createRuleBasedOpinionParameters(parameterNames, op.content, op.id);
+        const result = calculateBayesianVotes({
+          opinionId: op.id,
+          opinionContent: op.content,
+          parameterNames,
+          opinionParameters,
+          cats: ctxCats,
+          seed: `${seed}:${op.id}`,
+        });
+        const commentInput: CommentGenerationInput = {
+          opinionId: op.id,
+          proposalTitle: p.title,
+          proposalDescription: p.description,
+          opinionContent: op.content,
+          seed: `${seed}:${op.id}`,
+          cats: ctxCats.map((cat) => ({
+            id: cat.id,
+            name: cat.name,
+            commentSuffix: cat.commentSuffix,
+            factionName: cat.factionName,
+            score: result[cat.id]?.score ?? 0,
+            confidence: result[cat.id]?.confidence ?? 0.5,
+            factors: result[cat.id]?.factors ?? [],
+          })),
+        };
+        const commentResult = await generateVoteComments(commentInput, {
+          apiKey: settings.apiKey,
+          model: settings.commentModel,
+          temperature: settings.temperature,
+        });
 
         await tx.insert(llmLogs).values({
           opinionId: op.id,
           turnId: insertedTurn.id,
-          model: result.model,
+          model: commentResult.model,
           temperature: settings.temperature,
-          promptVersion: result.promptVersion,
-          inputHash: result.inputHash,
-          output: result.votes as unknown as Record<string, unknown>,
+          promptVersion: commentResult.promptVersion,
+          inputHash: commentResult.inputHash,
+          output: commentResult.comments,
           ok: true,
         });
+
+        const samples = ctxCats.map((cat) => ({
+          values: cat.topicParams,
+          score: result[cat.id]?.score ?? 0,
+        }));
+        const posterior = updateOpinionPosterior(opinionParameters, samples);
+        await tx
+          .update(opinions)
+          .set({ parameterPosterior: posterior })
+          .where(eq(opinions.id, op.id));
+
+        const calculatedVotes = Object.fromEntries(
+          ctxCats.map((cat) => [
+            cat.id,
+            {
+              ...(result[cat.id] ?? { score: 0, confidence: 0.5, factors: [] }),
+              reason: commentResult.comments[cat.id] ?? "",
+            },
+          ]),
+        );
 
         const mergedScores: Record<string, number> = {};
         const thisTurnScores: Record<string, number> = {};
@@ -276,7 +329,7 @@ export async function executeTurn(opts: {
           const prev = latest.get(`${op.id}:${c.id}`);
           if (prev) mergedScores[c.id] = prev.score;
         }
-        for (const [cid, v] of Object.entries(result.votes)) {
+        for (const [cid, v] of Object.entries(calculatedVotes)) {
           if (!nameById.has(cid)) continue;
           const prev = latest.get(`${op.id}:${cid}`);
           const stance = stanceOf(v.score);
@@ -291,8 +344,8 @@ export async function executeTurn(opts: {
             reason: v.reason,
             confidence: v.confidence,
             factors: v.factors,
-            model: result.model,
-            promptVersion: result.promptVersion,
+            model: VOTE_ENGINE_VERSION,
+            promptVersion: VOTE_ENGINE_VERSION,
           });
           votesCast++;
           if (prev && prev.stance !== stance) {

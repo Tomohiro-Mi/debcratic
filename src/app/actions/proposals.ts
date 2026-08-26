@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   cats,
   events,
   factions,
+  llmLogs,
   opinions,
   proposals,
   reports,
@@ -16,6 +17,7 @@ import {
 } from "@/db/schema";
 import { getDb } from "@/db";
 import { getSession, requireUser } from "@/lib/auth";
+import { inferOpinionParameters } from "@/lib/llm";
 import { executeTurn } from "@/lib/rules/turn";
 import { beginRunoff } from "@/lib/catchup";
 import {
@@ -25,6 +27,7 @@ import {
 } from "@/lib/constants";
 import { opinionContentSchema, parseDateTimeLocal, uuidSchema } from "@/lib/validation";
 import { createInitialProposalSimulationState, serializeProposalSimulationState } from "@/lib/proposal-state";
+import { getEffectiveSettings } from "@/lib/settings";
 
 export interface OpinionActionState {
   error?: string;
@@ -158,7 +161,14 @@ export async function postOpinionAction(
     return { error: "この議題には投稿できません" };
   }
 
-  const inserted = await getDb().transaction(async (tx) => {
+  const db = getDb();
+  const parameterRows = await db
+    .select({ name: proposalParameters.name })
+    .from(proposalParameters)
+    .where(eq(proposalParameters.proposalId, proposalId))
+    .orderBy(asc(proposalParameters.sortOrder));
+
+  const inserted = await db.transaction(async (tx) => {
     // Serialize the daily rate-limit check and insert for concurrent submissions.
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${`opinion-daily:${session.userId}`}))`,
@@ -199,6 +209,42 @@ export async function postOpinionAction(
   });
   if (!inserted.opinion) return { error: inserted.error ?? "投稿に失敗しました" };
   const opinion = inserted.opinion;
+
+  const settings = await getEffectiveSettings();
+  const semantic = await inferOpinionParameters(
+    {
+      opinionId: opinion.id,
+      proposalTitle: proposal.title,
+      proposalDescription: proposal.description,
+      parameterNames: parameterRows.map((row) => row.name),
+      opinionContent: opinion.content,
+    },
+    {
+      apiKey: settings.apiKey,
+      model: settings.opinionModel,
+      temperature: Math.min(0.2, settings.temperature),
+    },
+  );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(opinions)
+      .set({
+        parameterPrior: semantic.parameters,
+        parameterPosterior: semantic.parameters,
+        semanticModel: semantic.model,
+        semanticPromptVersion: semantic.promptVersion,
+      })
+      .where(eq(opinions.id, opinion.id));
+    await tx.insert(llmLogs).values({
+      opinionId: opinion.id,
+      model: semantic.model,
+      temperature: Math.min(0.2, settings.temperature),
+      promptVersion: semantic.promptVersion,
+      inputHash: semantic.inputHash,
+      output: semantic.parameters,
+      ok: true,
+    });
+  });
 
   try {
     await executeTurn({

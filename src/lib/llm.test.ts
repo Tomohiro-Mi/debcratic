@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   alignReasonTone,
   applyCommentSuffix,
+  generateVoteComments,
+  inferOpinionParameters,
   mockVotes,
   type LLMVoteInput,
 } from "@/lib/llm";
@@ -101,5 +103,47 @@ describe("LLM vote calibration", () => {
   it("makes the displayed reason match an extreme score", () => {
     expect(alignReasonTone("ちょっと良いと思います。", 9)).toContain("断固賛成");
     expect(alignReasonTone("少し心配です。", -9)).toContain("断固反対");
+  });
+
+  it("creates semantic parameters without a network call in fallback mode", async () => {
+    const result = await inferOpinionParameters(
+      {
+        opinionId: input.opinionId,
+        proposalTitle: input.proposalTitle,
+        proposalDescription: input.proposalDescription,
+        parameterNames: input.parameterNames,
+        opinionContent: input.opinionContent,
+      },
+      {},
+    );
+
+    expect(result.mock).toBe(true);
+    expect(result.parameters.安全性.mean).toBe(1);
+    expect(result.parameters.現実性.mean).toBe(1);
+  });
+
+  it("generates comments from fixed scores without changing them", async () => {
+    const result = await generateVoteComments(
+      {
+        opinionId: input.opinionId,
+        proposalTitle: input.proposalTitle,
+        proposalDescription: input.proposalDescription,
+        opinionContent: input.opinionContent,
+        seed: input.seed,
+        cats: input.cats.map((cat, index) => ({
+          id: cat.id,
+          name: cat.name,
+          commentSuffix: cat.commentSuffix,
+          factionName: cat.factionName,
+          score: index % 2 === 0 ? 9 : -9,
+          confidence: 0.9,
+          factors: [],
+        })),
+      },
+      {},
+    );
+
+    expect(result.comments["cat-a"]).toContain("断固賛成");
+    expect(result.comments["cat-b"]).toContain("断固反対");
   });
 });
