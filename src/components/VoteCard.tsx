@@ -1,6 +1,7 @@
 import { CatAvatar } from "@/components/CatAvatar";
 import { ScoreChip } from "@/components/ScoreChip";
 import type { VoteFactor } from "@/db/schema";
+import { displayCatComment } from "@/lib/comment-display";
 
 export interface VoteView {
   catId: string;
@@ -11,6 +12,7 @@ export interface VoteView {
   score: number;
   stance: string;
   reason: string;
+  silent: boolean;
   confidence: number;
   factors: VoteFactor[];
   model: string;
@@ -24,6 +26,7 @@ const STANCE_LABEL: Record<string, string> = {
 
 export function VoteCard({ v, prevScore }: { v: VoteView; prevScore?: number }) {
   const isDemo = v.model.includes("demo");
+  const displayReason = displayCatComment(v.reason, v.silent);
   const trend =
     prevScore !== undefined && prevScore !== v.score
       ? v.score > prevScore
@@ -64,9 +67,9 @@ export function VoteCard({ v, prevScore }: { v: VoteView; prevScore?: number }) 
           {"☆".repeat(Math.max(0, 5 - Math.round(v.confidence * 5)))}
         </span>
       </div>
-      {v.reason && (
+      {displayReason && (
         <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs leading-relaxed text-stone-600 ring-1 ring-orange-50">
-          「{v.reason}」
+          「{displayReason}」
         </p>
       )}
       {v.factors.length > 0 && (

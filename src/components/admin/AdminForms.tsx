@@ -7,7 +7,12 @@ import {
   upsertCatAction,
   type AdminActionState,
 } from "@/app/actions/admin";
-import { COMMENT_SUFFIXES, FOLLOWER_MAX_POWER, LEADER_POWER_THRESHOLD } from "@/lib/constants";
+import {
+  COMMENT_SUFFIXES,
+  FOLLOWER_MAX_POWER,
+  LEADER_POWER_THRESHOLD,
+  SILENT_CAT_COMMENT,
+} from "@/lib/constants";
 import { isCatIconProxyUrl } from "@/lib/cat-icon";
 
 export function CatForm({
@@ -22,6 +27,7 @@ export function CatForm({
     currentIcon: string;
     gender: "オス" | "メス" | "セン";
     commentSuffix: (typeof COMMENT_SUFFIXES)[number];
+    silent: boolean;
     power: number;
     factionId: string | null;
     role: "leader" | "follower" | null;
@@ -36,6 +42,7 @@ export function CatForm({
   const [name, setName] = useState(c?.name ?? "");
   const [power, setPower] = useState(c?.power ?? 5);
   const [gender, setGender] = useState<"オス" | "メス" | "セン">(c?.gender ?? "セン");
+  const [silent, setSilent] = useState(c?.silent ?? false);
   const [isLeader, setIsLeader] = useState(c?.role === "leader");
   const [factionId, setFactionId] = useState(c?.role === "follower" ? c.factionId ?? "" : "");
   const canLead = power >= LEADER_POWER_THRESHOLD;
@@ -128,6 +135,20 @@ export function CatForm({
             ))}
           </select>
           <p className="mt-1 text-[10px] text-stone-400">この猫の投票理由コメントに反映されます。</p>
+          <label className="mt-2 flex items-center gap-2 text-sm font-bold text-stone-700">
+            <input
+              name="silent"
+              type="checkbox"
+              value="1"
+              checked={silent}
+              onChange={(event) => setSilent(event.target.checked)}
+              className="accent-orange-500"
+            />
+            <span>話さない</span>
+          </label>
+          <p className="mt-1 text-[10px] text-stone-400">
+            投票理由は保存したまま、画面では常に「{SILENT_CAT_COMMENT}」と表示します。
+          </p>
         </div>
         <div>
           <label className="label">初期権力（1〜10）</label>

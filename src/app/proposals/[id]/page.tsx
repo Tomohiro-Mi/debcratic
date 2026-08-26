@@ -55,6 +55,7 @@ export default async function ProposalPage({
         score: lv.score,
         stance: lv.stance,
         reason: lv.reason,
+        silent: c.silent,
         confidence: lv.confidence,
         factors: lv.factors ?? [],
         model: lv.model,

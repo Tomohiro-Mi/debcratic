@@ -7,6 +7,7 @@ import { PowerBar } from "@/components/Bars";
 import { ScoreChip } from "@/components/ScoreChip";
 import { LineChart, ChartLegend, CHART_COLORS } from "@/components/LineChart";
 import { formatDate } from "@/lib/format";
+import { displayCatComment } from "@/lib/comment-display";
 
 export const dynamic = "force-dynamic";
 
@@ -113,8 +114,10 @@ export default async function CatPage({
                       </p>
                     </div>
                   </div>
-                  {v.reason && (
-                    <p className="mt-1.5 text-xs text-stone-400">「{v.reason}」</p>
+                  {displayCatComment(v.reason, c.silent) && (
+                    <p className="mt-1.5 text-xs text-stone-400">
+                      「{displayCatComment(v.reason, c.silent)}」
+                    </p>
                   )}
                 </div>
               ))}

@@ -15,6 +15,7 @@ export const PROMPT_VERSION = "vote-v2-balanced";
 
 export const COMMENT_SUFFIXES = ["ニャ", "ピィ", "のね", "普通"] as const;
 export type CommentSuffix = (typeof COMMENT_SUFFIXES)[number];
+export const SILENT_CAT_COMMENT = "……。";
 
 export const DEFAULTS = {
   llmModel: "openai/gpt-4o-mini",

@@ -85,6 +85,7 @@ export async function upsertCatAction(
   const commentSuffix = COMMENT_SUFFIXES.includes(commentSuffixRaw as CommentSuffix)
     ? (commentSuffixRaw as CommentSuffix)
     : "普通";
+  const silent = formData.get("silent") === "1";
   const powerRaw = Number(formData.get("power") ?? 1);
   const power = Number.isFinite(powerRaw)
     ? Math.max(1, Math.min(10, Math.round(powerRaw)))
@@ -168,17 +169,17 @@ export async function upsertCatAction(
         if (legacyColumns.has("type")) {
           if (legacyColumns.has("permanent_params")) {
             await tx.execute(sql`
-              insert into "cats" ("id", "name", "type", "icon", "gender", "power", "permanent_params")
-              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${power}, '{}'::jsonb)
+              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "power", "permanent_params")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${power}, '{}'::jsonb)
             `);
           } else {
             await tx.execute(sql`
-              insert into "cats" ("id", "name", "type", "icon", "gender", "power")
-              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${power})
+              insert into "cats" ("id", "name", "type", "icon", "gender", "comment_suffix", "silent", "power")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${commentSuffix}, ${silent}, ${power})
             `);
           }
         } else {
-          await tx.insert(cats).values({ id, name, icon, gender, commentSuffix, power });
+          await tx.insert(cats).values({ id, name, icon, gender, commentSuffix, silent, power });
         }
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
@@ -284,6 +285,7 @@ export async function upsertCatAction(
           icon,
           gender,
           commentSuffix,
+          silent,
           power,
           factionId: desiredFaction?.id ?? null,
           leaderId: desiredFaction?.leaderId ?? null,

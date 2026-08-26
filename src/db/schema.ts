@@ -30,6 +30,7 @@ export const cats = pgTable("cats", {
   icon: text("icon").notNull().default("🐱"),
   gender: text("gender").$type<"オス" | "メス" | "セン">().notNull().default("セン"),
   commentSuffix: text("comment_suffix").$type<CommentSuffix>().notNull().default("普通"),
+  silent: boolean("silent").notNull().default(false),
   power: integer("power").notNull().default(1),
   factionId: uuid("faction_id"),
   leaderId: text("leader_id"),
