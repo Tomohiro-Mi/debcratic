@@ -27,7 +27,7 @@ export default async function CatsPage() {
               className="card block transition hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={52} />
+                <CatAvatar icon={c.icon} size={52} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 font-black">
                     {c.name}

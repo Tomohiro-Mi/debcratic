@@ -49,7 +49,6 @@ export default async function ProposalPage({
         catId: c.id,
         name: c.name,
         icon: c.icon,
-        iconUrl: c.iconUrl,
         factionName: c.factionName,
         role: c.role,
         score: lv.score,
@@ -227,7 +226,7 @@ export default async function ProposalPage({
                   {unaffiliated.map((c) => (
                     <span key={c.id} className="chip bg-stone-100 text-stone-500">
                       <span className="inline-flex items-center gap-1">
-                        <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={20} />
+                        <CatAvatar icon={c.icon} size={20} />
                         {c.name} ⚡{c.power}
                       </span>
                     </span>
@@ -264,7 +263,7 @@ export default async function ProposalPage({
                         <td className="py-1.5 font-bold whitespace-nowrap">
                           <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
                             <span className="inline-flex items-center gap-1">
-                              <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={20} />
+                              <CatAvatar icon={c.icon} size={20} />
                               {c.name}
                             </span>
                           </Link>

@@ -6,7 +6,6 @@ export interface VoteView {
   catId: string;
   name: string;
   icon: string;
-  iconUrl: string | null;
   factionName: string | null;
   role: "leader" | "follower" | null;
   score: number;
@@ -35,7 +34,7 @@ export function VoteCard({ v, prevScore }: { v: VoteView; prevScore?: number }) 
   return (
     <div className="rounded-xl border border-orange-100 bg-[#fffdf8] p-3">
       <div className="flex items-center gap-2">
-        <CatAvatar icon={v.icon} iconUrl={v.iconUrl} size={36} />
+        <CatAvatar icon={v.icon} size={36} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-black">
             {v.name}

@@ -34,7 +34,7 @@ export async function upsertCatAction(
 
   const idRaw = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim().slice(0, 60);
-  const icon = String(formData.get("icon") ?? "🐱").trim().slice(0, 16) || "🐱";
+  const iconInput = String(formData.get("icon") ?? "🐱").trim().slice(0, 1000);
   const iconUrlRaw = String(formData.get("iconUrl") ?? "").trim().slice(0, 1000);
   const genderRaw = String(formData.get("gender") ?? "セン").trim();
   const gender = ["オス", "メス", "セン"].includes(genderRaw)
@@ -64,6 +64,9 @@ export async function upsertCatAction(
   if (factionId && !uuidSchema.safeParse(factionId).success) {
     return { error: "初期所属派閥の指定が正しくありません" };
   }
+  // Keep the image URL in the existing icon column so old production databases
+  // can deploy this feature without a blocking schema migration.
+  const icon = iconUrl ?? (iconInput.slice(0, 16) || "🐱");
 
   try {
     const db = getDb();
@@ -87,13 +90,13 @@ export async function upsertCatAction(
         while ((await tx.select({ x: cats.id }).from(cats).where(eq(cats.id, id)).limit(1)).length > 0) {
           id = `${base}-${i++}`;
         }
-        await tx.insert(cats).values({ id, name, icon, iconUrl, gender, power });
+        await tx.insert(cats).values({ id, name, icon, gender, power });
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
         if (!existing) throw new Error("cat not found");
         await tx
           .update(cats)
-          .set({ name, icon, iconUrl, gender, power })
+          .set({ name, icon, gender, power })
           .where(eq(cats.id, id));
       }
 

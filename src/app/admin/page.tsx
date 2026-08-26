@@ -81,7 +81,7 @@ export default async function AdminPage() {
                   <td className="py-2 font-bold whitespace-nowrap">
                     <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
                       <span className="inline-flex items-center gap-1.5">
-                        <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={24} />
+                        <CatAvatar icon={c.icon} size={24} />
                         {c.name}
                       </span>
                     </Link>
@@ -101,8 +101,8 @@ export default async function AdminPage() {
                             editingCat={{
                               id: c.id,
                               name: c.name,
-                              icon: c.icon,
-                              iconUrl: c.iconUrl,
+                              icon: /^https?:\/\//i.test(c.icon) ? "🐱" : c.icon,
+                              iconUrl: /^https?:\/\//i.test(c.icon) ? c.icon : "",
                               gender: c.gender,
                               power: c.power,
                               factionId: c.factionId,

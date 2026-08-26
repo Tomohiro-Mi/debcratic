@@ -43,7 +43,6 @@ export default async function NewProposalPage({
           id: c.id,
           name: c.name,
           icon: c.icon,
-          iconUrl: c.iconUrl,
         }))}
       />
     </div>

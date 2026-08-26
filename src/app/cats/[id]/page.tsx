@@ -25,7 +25,7 @@ export default async function CatPage({
     <div className="space-y-6">
       <header className="card">
         <div className="flex items-center gap-4">
-          <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={72} />
+          <CatAvatar icon={c.icon} size={72} />
           <div className="flex-1">
             <h1 className="text-2xl font-black">
               {c.name}

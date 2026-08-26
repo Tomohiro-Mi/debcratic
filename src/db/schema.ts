@@ -27,7 +27,6 @@ export const cats = pgTable("cats", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   icon: text("icon").notNull().default("🐱"),
-  iconUrl: text("icon_url"),
   gender: text("gender").$type<"オス" | "メス" | "セン">().notNull().default("セン"),
   power: integer("power").notNull().default(1),
   factionId: uuid("faction_id"),

@@ -8,7 +8,6 @@ export interface CatOption {
   id: string;
   name: string;
   icon: string;
-  iconUrl: string | null;
 }
 
 function toLocalInputValue(d: Date): string {
@@ -146,7 +145,7 @@ export function ProposalForm({ cats }: { cats: CatOption[] }) {
                 <tr key={c.id} className="border-t border-orange-50">
                   <td className="px-2 py-2 font-bold whitespace-nowrap">
                     <span className="inline-flex items-center gap-1.5">
-                      <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={24} />
+                      <CatAvatar icon={c.icon} size={24} />
                       {c.name}
                     </span>
                   </td>
