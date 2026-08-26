@@ -26,7 +26,7 @@ export default async function NewProposalPage({
   const cats = await getActiveCats();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-5">
       <div>
         <h1 className="text-2xl font-black">🗳️ 議題を作成</h1>
         <p className="mt-1 text-sm text-stone-500">
