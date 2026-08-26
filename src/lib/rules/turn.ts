@@ -1,10 +1,9 @@
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   cats,
   events,
   factions,
-  factionMemberships,
   llmLogs,
   opinions,
   proposalParameters,
@@ -25,6 +24,13 @@ import {
   type SimFaction,
 } from "@/lib/rules/faction";
 import { getEffectiveSettings } from "@/lib/settings";
+import {
+  createInitialProposalSimulationState,
+  parseProposalSimulationState,
+  PROPOSAL_STATE_EVENT_TYPES,
+  serializeProposalSimulationState,
+  type ProposalSimulationState,
+} from "@/lib/proposal-state";
 
 export interface TurnResult {
   ok: boolean;
@@ -93,7 +99,29 @@ export async function executeTurn(opts: {
         .where(eq(proposalParameters.proposalId, p.id))
         .orderBy(asc(proposalParameters.sortOrder));
 
-      const catRows = await tx.select().from(cats).where(eq(cats.active, true));
+      const allCatRows = await tx.select().from(cats).where(eq(cats.active, true));
+      const stateEventRows = await tx
+        .select({ payload: events.payload })
+        .from(events)
+        .where(
+          and(
+            eq(events.proposalId, p.id),
+            inArray(events.type, [...PROPOSAL_STATE_EVENT_TYPES]),
+          ),
+        )
+        .orderBy(desc(events.id))
+        .limit(1);
+      let simulationState = parseProposalSimulationState(stateEventRows[0]?.payload);
+      if (!simulationState) {
+        const initialFactionRows = await tx
+          .select()
+          .from(factions)
+          .where(eq(factions.status, "active"));
+        simulationState = createInitialProposalSimulationState(allCatRows, initialFactionRows);
+      }
+
+      const stateCatIds = new Set(Object.keys(simulationState.cats));
+      const catRows = allCatRows.filter((cat) => stateCatIds.has(cat.id));
       if (catRows.length === 0) return { ok: false, reason: "no_cats" };
       const nameById = new Map(catRows.map((c) => [c.id, c.name]));
 
@@ -103,14 +131,7 @@ export async function executeTurn(opts: {
         .where(eq(proposalCatValues.proposalId, p.id));
       const cvByCat = new Map(cvRows.map((r) => [r.catId, r.values ?? {}]));
 
-      const factionRows = await tx
-        .select()
-        .from(factions)
-        .where(eq(factions.status, "active"));
-      const msRows = await tx
-        .select()
-        .from(factionMemberships)
-        .where(isNull(factionMemberships.leftTurn));
+      const factionRows = simulationState.factions;
 
       const histRows = await tx
         .select({
@@ -198,15 +219,18 @@ export async function executeTurn(opts: {
 
       for (const op of dueList) {
         const ctxCats: LLMCatContext[] = catRows.map((c) => {
+          const stateCat = simulationState.cats[c.id];
           const myFaction =
-            c.factionId != null ? factionRows.find((x) => x.id === c.factionId) : undefined;
+            stateCat.factionKey
+              ? factionRows.find((x) => x.key === stateCat.factionKey)
+              : undefined;
           const leaderName = myFaction
             ? nameById.get(myFaction.leaderId) ?? null
             : null;
           return {
             id: c.id,
             name: c.name,
-            power: c.power,
+            power: stateCat.power,
             topicParams: cvByCat.get(c.id) ?? {},
             factionName: myFaction?.name ?? null,
             leaderName,
@@ -324,22 +348,19 @@ export async function executeTurn(opts: {
       }
 
       const simCats: SimCat[] = catRows.map((c) => {
-        const mem = msRows.find((m) => m.catId === c.id);
-        const fid = c.factionId ?? mem?.factionId ?? null;
-        const f = fid ? factionRows.find((x) => x.id === fid) : undefined;
-        const role = f ? (f.leaderId === c.id ? "leader" : "follower") : null;
+        const stateCat = simulationState.cats[c.id];
         return {
           id: c.id,
           name: c.name,
-          power: c.power,
+          power: stateCat.power,
           topicParams: cvByCat.get(c.id) ?? {},
-          factionKey: fid,
-          role,
-          joinedTurn: mem?.joinedTurn ?? null,
+          factionKey: stateCat.factionKey,
+          role: stateCat.role,
+          joinedTurn: stateCat.joinedTurn,
         };
       });
       const simFactions: SimFaction[] = factionRows.map((f) => ({
-        key: f.id,
+        key: f.key,
         name: f.name,
         leaderId: f.leaderId,
         foundedTurn: f.foundedTurn,
@@ -359,106 +380,74 @@ export async function executeTurn(opts: {
         },
       });
 
-      const keyToId = new Map<string, string>();
-      for (const f of simFactions) keyToId.set(f.key, f.key);
-      const newFacRows: {
-        id: string;
-        name: string;
-        leaderId: string;
-        foundedTurn: number;
-      }[] = [];
-      for (const nf of out.newFactions) {
-        const id = randomUUID();
-        keyToId.set(nf.key, id);
-        newFacRows.push({
-          id,
-          name: nf.name,
-          leaderId: nf.leaderId,
-          foundedTurn: turnNumber,
-        });
-      }
-      if (newFacRows.length > 0) {
-        await tx.insert(factions).values(newFacRows);
-      }
-
       const memByCat = new Map<
         string,
-        { factionId: string; role: "leader" | "follower"; joinedTurn: number }
+        { factionKey: string; role: "leader" | "follower"; joinedTurn: number }
       >();
-      for (const m of msRows) {
-        if (!memByCat.has(m.catId)) {
-          memByCat.set(m.catId, {
-            factionId: m.factionId,
-            role: m.role,
-            joinedTurn: m.joinedTurn,
+      for (const c of simCats) {
+        if (c.factionKey && c.role) {
+          memByCat.set(c.id, {
+            factionKey: c.factionKey,
+            role: c.role,
+            joinedTurn: c.joinedTurn ?? 0,
           });
         }
       }
 
+      const knownFactionKeys = new Set(factionRows.map((f) => f.key));
+      for (const nf of out.newFactions) knownFactionKeys.add(nf.key);
+
       for (const mo of out.membershipOps) {
-        const fid = keyToId.get(mo.factionKey);
-        if (!fid) continue;
+        if (!knownFactionKeys.has(mo.factionKey)) continue;
         if (mo.op === "join") {
           memByCat.set(mo.catId, {
-            factionId: fid,
-            role: mo.role,
-            joinedTurn: turnNumber,
-          });
-          await tx.insert(factionMemberships).values({
-            factionId: fid,
-            catId: mo.catId,
+            factionKey: mo.factionKey,
             role: mo.role,
             joinedTurn: turnNumber,
           });
         } else {
           const cur = memByCat.get(mo.catId);
-          if (cur && cur.factionId === fid) {
-            await tx
-              .update(factionMemberships)
-              .set({ leftTurn: turnNumber })
-              .where(
-                and(
-                  eq(factionMemberships.catId, mo.catId),
-                  eq(factionMemberships.factionId, fid),
-                  isNull(factionMemberships.leftTurn),
-                ),
-              );
-            memByCat.delete(mo.catId);
-          }
+          if (cur && cur.factionKey === mo.factionKey) memByCat.delete(mo.catId);
         }
       }
 
-      for (const dk of out.dissolvedFactionKeys) {
-        const fid = keyToId.get(dk);
-        if (fid) {
-          await tx
-            .update(factions)
-            .set({ status: "dissolved", dissolvedTurn: turnNumber })
-            .where(eq(factions.id, fid));
-        }
-      }
-
-      const leaderOfFaction = new Map<string, string>();
-      for (const f of factionRows) leaderOfFaction.set(f.id, f.leaderId);
-      for (const nf of newFacRows) leaderOfFaction.set(nf.id, nf.leaderId);
-
+      const nextFactions: ProposalSimulationState["factions"] = factionRows
+        .filter((f) => !out.dissolvedFactionKeys.includes(f.key))
+        .concat(
+          out.newFactions.map((f) => ({
+            key: f.key,
+            name: f.name,
+            leaderId: f.leaderId,
+            foundedTurn: turnNumber,
+          })),
+        );
+      const leaderOfFaction = new Map(nextFactions.map((f) => [f.key, f.leaderId]));
+      const nextCats: ProposalSimulationState["cats"] = { ...simulationState.cats };
       for (const c of catRows) {
-        const power = out.powers[c.id];
+        const current = simulationState.cats[c.id];
         const mem = memByCat.get(c.id);
-        const factionChanged = (mem?.factionId ?? null) !== (c.factionId ?? null);
-        if (power !== c.power || factionChanged) {
-          await tx
-            .update(cats)
-            .set({
-              power,
-              factionId: mem?.factionId ?? null,
-              leaderId: mem ? (leaderOfFaction.get(mem.factionId) ?? null) : null,
-            })
-            .where(eq(cats.id, c.id));
+        nextCats[c.id] = {
+          power: out.powers[c.id] ?? current.power,
+          factionKey: mem?.factionKey ?? null,
+          role: mem?.role ?? null,
+          joinedTurn: mem ? mem.joinedTurn : null,
+        };
+        if (mem && !leaderOfFaction.has(mem.factionKey)) {
+          nextCats[c.id].factionKey = null;
+          nextCats[c.id].role = null;
+          nextCats[c.id].joinedTurn = null;
         }
       }
+      const nextSimulationState: ProposalSimulationState = {
+        cats: nextCats,
+        factions: nextFactions,
+      };
 
       const allEvents = [
+        {
+          type: "SimulationStateUpdated",
+          payload: serializeProposalSimulationState(nextSimulationState),
+        },
         ...uiEvents,
         ...out.events,
       ].map((e) => ({

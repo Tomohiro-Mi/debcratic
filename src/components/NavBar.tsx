@@ -19,9 +19,6 @@ export async function NavBar() {
           <Link href="/cats" className="hover:text-orange-600">
             猫たち
           </Link>
-          <Link href={session ? "/timeline" : "/login?next=/timeline"} className="hover:text-orange-600">
-            タイムライン
-          </Link>
           {session?.role === "admin" && (
             <Link href="/admin" className="hover:text-orange-600">
               管理

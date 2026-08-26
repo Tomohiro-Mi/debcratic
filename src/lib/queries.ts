@@ -15,6 +15,12 @@ import {
 import type { VoteFactor } from "@/db/schema";
 import { getDb } from "@/db";
 import { getEffectiveSettings } from "@/lib/settings";
+import {
+  createInitialProposalSimulationState,
+  parseProposalSimulationState,
+  PROPOSAL_STATE_EVENT_TYPES,
+  type ProposalSimulationState,
+} from "@/lib/proposal-state";
 
 export interface FactionInfo {
   id: string;
@@ -70,6 +76,67 @@ export async function getSocietyState() {
       name: `${nameById.get(f.leaderId) ?? f.name}派`,
       leaderName: nameById.get(f.leaderId) ?? f.leaderId,
       members: catsView.filter((c) => c.factionId === f.id),
+    }))
+    .sort((a, b) => b.members.length - a.members.length);
+
+  return { catsView, factionsView };
+}
+
+export async function getProposalSocietyState(pid: string) {
+  const db = getDb();
+  const [catRows, stateRows] = await Promise.all([
+    db.select().from(cats).where(eq(cats.active, true)),
+    db
+      .select({ payload: events.payload })
+      .from(events)
+      .where(
+        and(
+          eq(events.proposalId, pid),
+          inArray(events.type, [...PROPOSAL_STATE_EVENT_TYPES]),
+        ),
+      )
+      .orderBy(desc(events.id))
+      .limit(1),
+  ]);
+
+  let state = parseProposalSimulationState(stateRows[0]?.payload);
+  if (!state) {
+    const factionRows = await db.select().from(factions).where(eq(factions.status, "active"));
+    state = createInitialProposalSimulationState(catRows, factionRows);
+  }
+  return buildProposalSocietyState(catRows, state);
+}
+
+function buildProposalSocietyState(
+  catRows: Awaited<ReturnType<typeof getActiveCats>>,
+  state: ProposalSimulationState,
+) {
+  const nameById = new Map(catRows.map((cat) => [cat.id, cat.name]));
+  const factionByKey = new Map(state.factions.map((faction) => [faction.key, faction]));
+  const catsView = catRows
+    .filter((cat) => state.cats[cat.id])
+    .map((cat) => {
+      const stateCat = state.cats[cat.id];
+      const faction = stateCat.factionKey ? factionByKey.get(stateCat.factionKey) : undefined;
+      const leaderName = faction ? nameById.get(faction.leaderId) ?? null : null;
+      return {
+        ...cat,
+        power: stateCat.power,
+        factionId: faction?.key ?? null,
+        leaderId: faction?.leaderId ?? null,
+        factionName: faction ? `${leaderName ?? faction.name}派` : null,
+        role: stateCat.role,
+        leaderName: stateCat.role === "follower" ? leaderName : null,
+      };
+    });
+
+  const factionsView = state.factions
+    .map((faction) => ({
+      ...faction,
+      id: faction.key,
+      name: `${nameById.get(faction.leaderId) ?? faction.name}派`,
+      leaderName: nameById.get(faction.leaderId) ?? faction.leaderId,
+      members: catsView.filter((cat) => cat.factionId === faction.key),
     }))
     .sort((a, b) => b.members.length - a.members.length);
 
@@ -140,7 +207,7 @@ export async function getProposalDetail(pid: string) {
     .where(eq(proposalCatValues.proposalId, pid));
   const cvByCat = cvRows.map((r) => ({ catId: r.v.catId, values: r.v.values ?? {} }));
 
-  const society = await getSocietyState();
+  const society = await getProposalSocietyState(pid);
   const settings = await getEffectiveSettings();
 
   const opRows = await db
@@ -200,22 +267,6 @@ export async function getProposalDetail(pid: string) {
     runoffTurnLimitRow: settings.runoffTurnLimit,
     runoffVoteIntervalMinutes: settings.runoffVoteIntervalMinutes,
   };
-}
-
-export async function getGlobalEvents(limit = 150) {
-  return getDb()
-    .select({
-      id: events.id,
-      type: events.type,
-      turnNumber: events.turnNumber,
-      payload: events.payload,
-      createdAt: events.createdAt,
-      proposalTitle: proposals.title,
-    })
-    .from(events)
-    .leftJoin(proposals, eq(events.proposalId, proposals.id))
-    .orderBy(desc(events.id))
-    .limit(limit);
 }
 
 export async function getCatProfile(

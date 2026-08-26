@@ -3,13 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { cats, opinions, proposals, reports, users, proposalParameters, proposalCatValues } from "@/db/schema";
+import {
+  cats,
+  events,
+  factions,
+  opinions,
+  proposals,
+  reports,
+  users,
+  proposalParameters,
+  proposalCatValues,
+} from "@/db/schema";
 import { getDb } from "@/db";
 import { getSession, requireUser } from "@/lib/auth";
 import { executeTurn } from "@/lib/rules/turn";
 import { beginRunoff } from "@/lib/catchup";
 import { OPINION_RATE_LIMIT_MS } from "@/lib/constants";
 import { opinionContentSchema, parseDateTimeLocal, uuidSchema } from "@/lib/validation";
+import { createInitialProposalSimulationState, serializeProposalSimulationState } from "@/lib/proposal-state";
 
 export interface OpinionActionState {
   error?: string;
@@ -52,10 +63,13 @@ export async function createProposalAction(
     redirect("/proposals/new?error=dup");
   }
 
-  const activeCats = await getDb().select().from(cats).where(eq(cats.active, true));
+  const db = getDb();
+  const activeCats = await db.select().from(cats).where(eq(cats.active, true));
   if (activeCats.length === 0) {
     redirect("/proposals/new?error=nocats");
   }
+  const activeFactions = await db.select().from(factions).where(eq(factions.status, "active"));
+  const initialSimulationState = createInitialProposalSimulationState(activeCats, activeFactions);
 
   const valuesRows = activeCats.map((c) => {
     const values: Record<string, number> = {};
@@ -66,7 +80,7 @@ export async function createProposalAction(
     }
     return { catId: c.id, values };
   });
-  const proposal = await getDb().transaction(async (tx) => {
+  const proposal = await db.transaction(async (tx) => {
     const [createdProposal] = await tx
       .insert(proposals)
       .values({
@@ -89,6 +103,12 @@ export async function createProposalAction(
     await tx.insert(proposalCatValues).values(
       valuesRows.map((row) => ({ ...row, proposalId: createdProposal.id })),
     );
+    await tx.insert(events).values({
+      proposalId: createdProposal.id,
+      turnNumber: null,
+      type: "SimulationInitialized",
+      payload: serializeProposalSimulationState(initialSimulationState),
+    });
     return createdProposal;
   });
 

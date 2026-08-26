@@ -46,8 +46,9 @@
   - 権力総量保存（1〜10、ゼロサム正規化）
   - 派閥結成(権力8+)/子分補充(議題評価軸の類似度最大)/独立(5+)/破門(3未満)/解散(8未満)
 - ベイズ推定による意見パラメータ推定
-- Event Sourcing（全状態変化をイベント記録 → タイムライン・履歴・グラフ再現）
-- UI: 議題ランキング/各猫の投票カード（理由+要因内訳）/猫プロフィール/権力グラフ/派閥一覧/猫社会タイムライン
+- Event Sourcing（全状態変化をイベント記録 → 議題ごとのタイムライン・履歴・グラフ再現）
+- 議題ごとに権力・派閥シミュレーションの初期状態を保存し、議題間で状態を共有しない
+- UI: 議題ランキング/各猫の投票カード（理由+要因内訳）/猫プロフィール/権力グラフ/派閥一覧/議題内タイムライン
 - 決選投票フロー（同率1位 → RUNOFF_PENDING → 発案者開始 or 24h自動 → 5ターン → タイブレーク）
 - 管理：猫CRUD（画像URL・性別・初期派閥）、**LLM設定（API KEY暗号化保存/モデル候補付き選択/temperature/各種閾値/接続テスト）**、通報・削除・BAN
 - Rate Limit（同一議題への投稿は10分間隔）、Prompt Injection対策（`<user_opinion>`分離）
@@ -129,10 +130,9 @@ Vercel上では、`DATABASE_URL`にNeon/Vercel Postgres等の本番Postgres接�
 src/
 ├─ app/
 │  ├─ page.tsx                    # トップ（進行中/終了議題）
-│  ├─ proposals/[id]/page.tsx     # 議題詳細（ランキング・投票・タイムライン）
+│  ├─ proposals/[id]/page.tsx     # 議題詳細（ランキング・投票・議題内タイムライン）
 │  ├─ proposals/new/page.tsx      # 議題作成
 │  ├─ cats/[id]/page.tsx          # 猫プロフィール（権力グラフ・履歴）
-│  ├─ timeline/page.tsx           # 猫社会タイムライン
 │  ├─ admin/page.tsx              # 管理画面
 │  ├─ api/cron/route.ts           # 定期実行エントリ
 │  └─ actions/                    # Server Actions (auth/proposals/admin)

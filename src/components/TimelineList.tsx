@@ -11,12 +11,11 @@ export interface TimelineItem {
 
 export function TimelineList({
   events,
-  showProposal = false,
 }: {
-  events: (TimelineItem & { proposalTitle?: string | null })[];
-  showProposal?: boolean;
+  events: TimelineItem[];
 }) {
-  if (events.length === 0) {
+  const visibleEvents = events.filter((event) => describeEvent(event) !== null);
+  if (visibleEvents.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-stone-400">
         まだ何も起きていない。静かな猫社会… 🐾
@@ -25,7 +24,7 @@ export function TimelineList({
   }
 
   const blocks: { key: string; label: string; items: typeof events }[] = [];
-  for (const e of events) {
+  for (const e of visibleEvents) {
     const key =
       e.turnNumber !== null ? `turn:${e.turnNumber}` : `time:${e.id}`;
     const label =
@@ -53,11 +52,6 @@ export function TimelineList({
                 <div key={e.id} className="text-sm">
                   <span className="mr-1">{d.icon}</span>
                   <span className="text-stone-700">{d.text}</span>
-                  {showProposal && e.proposalTitle && (
-                    <span className="ml-1 rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-600">
-                      {e.proposalTitle}
-                    </span>
-                  )}
                   <span className="ml-1 text-[10px] text-stone-300">
                     {timeAgo(e.createdAt)}
                   </span>

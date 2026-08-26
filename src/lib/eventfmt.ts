@@ -9,6 +9,8 @@ export interface EventLike {
 const HIDDEN_TYPES = new Set([
   "OpinionPowerRule",
   "StanceChangePenalty",
+  "SimulationInitialized",
+  "SimulationStateUpdated",
   "VoteCast",
 ]);
 

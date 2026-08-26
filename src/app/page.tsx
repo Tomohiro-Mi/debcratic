@@ -66,12 +66,7 @@ export default async function HomePage() {
       {session ? (
         <>
           <section>
-            <div className="flex items-center justify-between">
-              <h2 className="section-title">🔥 進行中の議題</h2>
-              <Link href="/proposals/new" className="btn btn-primary !px-3 !py-1.5 text-xs">
-                ＋ 新しい議題
-              </Link>
-            </div>
+            <h2 className="section-title">🔥 進行中の議題</h2>
             {active.length === 0 ? (
               <div className="card py-10 text-center text-sm text-stone-400">
                 まだ進行中の議題がありません。最初の議題を作ってみませんか？
