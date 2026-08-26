@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { desc, eq, isNull } from "drizzle-orm";
-import { cats, reports, users } from "@/db/schema";
+import { cats, factions, reports, users } from "@/db/schema";
 import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { getEffectiveSettings } from "@/lib/settings";
 import { CatForm, SettingsForm } from "@/components/admin/AdminForms";
+import { CatAvatar } from "@/components/CatAvatar";
 import { fetchOpenRouterModels, POPULAR_MODELS } from "@/lib/llm";
 import {
   resolveReportAction,
@@ -20,8 +21,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [catRows, settings, reportRows, userRows, remoteModels] = await Promise.all([
+  const [catRows, factionRows, settings, reportRows, userRows, remoteModels] = await Promise.all([
     getDb().select().from(cats).orderBy(desc(cats.power)),
+    getDb().select().from(factions).where(eq(factions.status, "active")).orderBy(factions.name),
     getEffectiveSettings(),
     getDb()
       .select({ r: reports, reporterName: users.name })
@@ -41,6 +43,11 @@ export default async function AdminPage() {
   const modelOptions = [
     ...new Set([...POPULAR_MODELS, ...remoteModels]),
   ];
+  const factionOptions = factionRows.map((f) => ({
+    id: f.id,
+    name: f.name,
+    leaderName: catRows.find((c) => c.id === f.leaderId)?.name ?? f.leaderId,
+  }));
 
   return (
     <div className="space-y-6">
@@ -53,7 +60,7 @@ export default async function AdminPage() {
 
       <SettingsForm s={settings} modelOptions={modelOptions} />
 
-      <CatForm />
+      <CatForm factions={factionOptions} />
 
       <section className="card">
         <h2 className="section-title">🐱 猫一覧</h2>
@@ -73,19 +80,43 @@ export default async function AdminPage() {
                 <tr key={c.id} className={`border-t border-orange-50 ${c.active ? "" : "opacity-40"}`}>
                   <td className="py-2 font-bold whitespace-nowrap">
                     <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
-                      {c.icon} {c.name}
+                      <span className="inline-flex items-center gap-1.5">
+                        <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={24} />
+                        {c.name}
+                      </span>
                     </Link>
                   </td>
                   <td className="tabular-nums">⚡{c.power}</td>
-                  <td className="text-xs">{c.factionId ? "所属あり" : "無所属"}</td>
+                  <td className="text-xs">
+                    {factionRows.find((f) => f.id === c.factionId)?.name ?? "無所属"}
+                  </td>
                   <td className="text-xs">{c.active ? "活動中" : "停止中"}</td>
                   <td className="text-right">
-                    <form action={toggleCatActiveAction}>
-                      <input type="hidden" name="catId" value={c.id} />
-                      <button type="submit" className="btn btn-ghost !px-2 !py-1 text-[10px]">
-                        {c.active ? "停止" : "有効化"}
-                      </button>
-                    </form>
+                    <div className="flex justify-end gap-1">
+                      <details>
+                        <summary className="btn btn-ghost !px-2 !py-1 text-[10px]">編集</summary>
+                        <div className="absolute right-4 z-10 mt-2 w-[min(92vw,640px)]">
+                          <CatForm
+                            factions={factionOptions}
+                            editingCat={{
+                              id: c.id,
+                              name: c.name,
+                              icon: c.icon,
+                              iconUrl: c.iconUrl,
+                              gender: c.gender,
+                              power: c.power,
+                              factionId: c.factionId,
+                            }}
+                          />
+                        </div>
+                      </details>
+                      <form action={toggleCatActiveAction}>
+                        <input type="hidden" name="catId" value={c.id} />
+                        <button type="submit" className="btn btn-ghost !px-2 !py-1 text-[10px]">
+                          {c.active ? "停止" : "有効化"}
+                        </button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -12,6 +12,7 @@ import { TimelineList } from "@/components/TimelineList";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { startRunoffAction } from "@/app/actions/proposals";
 import type { VoteView } from "@/components/VoteCard";
+import { CatAvatar } from "@/components/CatAvatar";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function ProposalPage({
         catId: c.id,
         name: c.name,
         icon: c.icon,
+        iconUrl: c.iconUrl,
         factionName: c.factionName,
         role: c.role,
         score: lv.score,
@@ -143,7 +145,7 @@ export default async function ProposalPage({
           {d.proposal.status === "RUNOFF" && (
             <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
               <p className="text-sm font-black text-violet-700">
-                🏁 決選投票中 — {d.proposal.runoffTurnsDone}/5 ターン終了（1時間ごと）
+                🏁 決選投票中 — {d.proposal.runoffTurnsDone}/{d.runoffTurnLimitRow} ターン終了（1時間ごと）
               </p>
             </section>
           )}
@@ -224,7 +226,10 @@ export default async function ProposalPage({
                 <div className="flex flex-wrap gap-1">
                   {unaffiliated.map((c) => (
                     <span key={c.id} className="chip bg-stone-100 text-stone-500">
-                      {c.icon} {c.name} ⚡{c.power}
+                      <span className="inline-flex items-center gap-1">
+                        <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={20} />
+                        {c.name} ⚡{c.power}
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -258,7 +263,10 @@ export default async function ProposalPage({
                       <tr key={c.id} className="border-t border-orange-50">
                         <td className="py-1.5 font-bold whitespace-nowrap">
                           <Link href={`/cats/${c.id}`} className="hover:text-orange-600">
-                            {c.icon} {c.name}
+                            <span className="inline-flex items-center gap-1">
+                              <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={20} />
+                              {c.name}
+                            </span>
                           </Link>
                         </td>
                         {d.params.map((p) => (

@@ -6,7 +6,6 @@ import { SeededRandom } from "@/lib/rng";
 export interface LLMCatContext {
   id: string;
   name: string;
-  type: string;
   power: number;
   topicParams: Record<string, number>;
   factionName: string | null;
@@ -87,7 +86,6 @@ function buildUserPrompt(input: LLMVoteInput): string {
         .join(", ");
       return `  <cat id="${c.id}">
     名前: ${c.name}
-    種類: ${c.type}
     権力: ${c.power}
     所属派閥: ${c.factionName ?? "無所属"}
     リーダー: ${c.leaderName ?? "なし"}

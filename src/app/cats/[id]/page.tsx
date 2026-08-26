@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCatProfile } from "@/lib/queries";
 import { CatAvatar } from "@/components/CatAvatar";
-import { PowerBar, ParamBar } from "@/components/Bars";
+import { PowerBar } from "@/components/Bars";
 import { ScoreChip } from "@/components/ScoreChip";
 import { LineChart, ChartLegend, CHART_COLORS } from "@/components/LineChart";
 import { formatDate } from "@/lib/format";
@@ -25,7 +25,7 @@ export default async function CatPage({
     <div className="space-y-6">
       <header className="card">
         <div className="flex items-center gap-4">
-          <CatAvatar icon={c.icon} size={72} />
+          <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={72} />
           <div className="flex-1">
             <h1 className="text-2xl font-black">
               {c.name}
@@ -34,7 +34,7 @@ export default async function CatPage({
               )}
             </h1>
             <p className="text-sm text-stone-400">
-              {c.type} · {c.gender}
+              性別: {c.gender}
             </p>
           </div>
           <div className="w-40">
@@ -62,15 +62,6 @@ export default async function CatPage({
           </div>
         </div>
       </header>
-
-      <section className="card">
-        <h2 className="section-title">🧠 恒久パラメータ（基本人格）</h2>
-        <div className="space-y-1.5">
-          {Object.entries(c.permanentParams).map(([k, v], i) => (
-            <ParamBar key={k} label={k} value={v} color={CHART_COLORS[i % CHART_COLORS.length]} />
-          ))}
-        </div>
-      </section>
 
       <section className="card">
         <h2 className="section-title">📈 権力推移</h2>
@@ -146,16 +137,14 @@ export default async function CatPage({
         </section>
 
         <section className="card">
-          <h2 className="section-title">🌀 思想変化履歴</h2>
-          {d.paramShifts.length === 0 ? (
-            <p className="text-sm text-stone-400">思想に変化はありません。</p>
+          <h2 className="section-title">🏛️ 派閥履歴</h2>
+          {d.factionEvents.length === 0 ? (
+            <p className="text-sm text-stone-400">派閥の移動履歴はありません。</p>
           ) : (
             <ul className="space-y-1.5 text-xs text-stone-600">
-              {d.paramShifts.map((e) => (
+              {d.factionEvents.map((e) => (
                 <li key={e.id}>
-                  Turn {e.turnNumber}: 「{String(e.payload["param"])}」{" "}
-                  {String(e.payload["from"])} → {String(e.payload["to"])}
-                  （{e.payload["reason"] === "assimilation" ? "同化" : "反発"}）{" "}
+                  Turn {e.turnNumber ?? "-"}: {e.text}{" "}
                   <span className="text-stone-300">{formatDate(e.createdAt)}</span>
                 </li>
               ))}

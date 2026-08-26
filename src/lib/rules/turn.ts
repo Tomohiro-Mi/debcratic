@@ -206,7 +206,6 @@ export async function executeTurn(opts: {
           return {
             id: c.id,
             name: c.name,
-            type: c.type,
             power: c.power,
             topicParams: cvByCat.get(c.id) ?? {},
             factionName: myFaction?.name ?? null,
@@ -333,7 +332,7 @@ export async function executeTurn(opts: {
           id: c.id,
           name: c.name,
           power: c.power,
-          params: { ...(c.permanentParams ?? {}) },
+          topicParams: cvByCat.get(c.id) ?? {},
           factionKey: fid,
           role,
           joinedTurn: mem?.joinedTurn ?? null,
@@ -355,8 +354,6 @@ export async function executeTurn(opts: {
         stanceChangeCounts: changeCounts,
         settings: {
           exilePenaltyProb: settings.exilePenaltyProb,
-          assimilationProb: settings.assimilationProb,
-          assimilationMinTurns: settings.assimilationMinTurns,
           changeWindow: settings.changeWindow,
           changeThreshold: settings.changeThreshold,
         },
@@ -447,17 +444,13 @@ export async function executeTurn(opts: {
 
       for (const c of catRows) {
         const power = out.powers[c.id];
-        const params = out.finalParams[c.id] ?? {};
         const mem = memByCat.get(c.id);
         const factionChanged = (mem?.factionId ?? null) !== (c.factionId ?? null);
-        const paramsChanged =
-          JSON.stringify(params) !== JSON.stringify(c.permanentParams ?? {});
-        if (power !== c.power || factionChanged || paramsChanged) {
+        if (power !== c.power || factionChanged) {
           await tx
             .update(cats)
             .set({
               power,
-              permanentParams: params,
               factionId: mem?.factionId ?? null,
               leaderId: mem ? (leaderOfFaction.get(mem.factionId) ?? null) : null,
             })

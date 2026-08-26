@@ -27,15 +27,13 @@ export default async function CatsPage() {
               className="card block transition hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <CatAvatar icon={c.icon} size={52} />
+                <CatAvatar icon={c.icon} iconUrl={c.iconUrl} size={52} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 font-black">
                     {c.name}
                     {c.role === "leader" && <span title="リーダー">👑</span>}
                   </p>
-                  <p className="truncate text-xs text-stone-400">
-                    {c.type} · {c.gender}
-                  </p>
+                  <p className="truncate text-xs text-stone-400">性別: {c.gender}</p>
                 </div>
               </div>
               <div className="mt-3">
@@ -76,19 +74,9 @@ export default async function CatsPage() {
                     👑 リーダー: {f.leaderName}
                     {followers.length > 0 && (
                       <>
-                        {" · "}子分: {followers.map((m) => `${m.icon}${m.name}`).join(" ")}
+                        {" · "}子分: {followers.map((m) => m.name).join(" ")}
                       </>
                     )}
-                  </p>
-                  <p className="mt-1 text-[11px] text-stone-400">
-                    思想傾向:{" "}
-                    {Object.entries(
-                      f.members.find((m) => m.role === "leader")?.permanentParams ?? {},
-                    )
-                      .sort((a, b) => b[1] - a[1])
-                      .slice(0, 2)
-                      .map(([k, v]) => `${k}${v}`)
-                      .join("・") || "-"}
                   </p>
                 </div>
               );

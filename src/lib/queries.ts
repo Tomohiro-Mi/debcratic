@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import type { VoteFactor } from "@/db/schema";
 import { getDb } from "@/db";
+import { getEffectiveSettings } from "@/lib/settings";
 
 export interface FactionInfo {
   id: string;
@@ -139,6 +140,7 @@ export async function getProposalDetail(pid: string) {
   const cvByCat = cvRows.map((r) => ({ catId: r.v.catId, values: r.v.values ?? {} }));
 
   const society = await getSocietyState();
+  const settings = await getEffectiveSettings();
 
   const opRows = await db
     .select({ o: opinions, authorName: users.name })
@@ -194,7 +196,7 @@ export async function getProposalDetail(pid: string) {
     latestVotes,
     events: eventRows,
     adoptedOpinion,
-    runoffTurnLimitRow: null as null | number,
+    runoffTurnLimitRow: settings.runoffTurnLimit,
   };
 }
 
@@ -272,13 +274,33 @@ export async function getCatProfile(catId: string) {
       .orderBy(desc(events.id))
       .limit(600);
 
-  const [stanceChangesRaw, paramShiftsRaw] = await Promise.all([
+  const [stanceChangesRaw, factionEventsRaw] = await Promise.all([
     allEventsForCat(["VoteChanged"]),
-    allEventsForCat(["ParameterShifted"]),
+    allEventsForCat([
+      "FactionCreated",
+      "FactionJoined",
+      "FactionLeft",
+      "CatBecameIndependent",
+      "CatExcommunicated",
+    ]),
   ]);
 
-  const filterByCat = <T extends { payload: Record<string, unknown> }>(rows: T[]) =>
-    rows.filter((r) => r.payload["cat_id"] === catId).slice(0, 30);
+  const filterByCat = <T extends { type: string; payload: Record<string, unknown> }>(rows: T[]) =>
+    rows
+      .filter(
+        (r) =>
+          r.payload["cat_id"] === catId ||
+          (r.type === "FactionCreated" && r.payload["leader_id"] === catId),
+      )
+      .slice(0, 30);
+
+  const factionEvents = filterByCat(factionEventsRaw).map((e) => ({
+    id: e.id,
+    turnNumber: e.turnNumber,
+    createdAt: e.createdAt,
+    payload: e.payload,
+    text: describeCatFactionEvent(e.type, e.payload),
+  }));
 
   return {
     cat: me,
@@ -293,8 +315,17 @@ export async function getCatProfile(catId: string) {
     })),
     recentVotes,
     stanceChanges: filterByCat(stanceChangesRaw),
-    paramShifts: filterByCat(paramShiftsRaw),
+    factionEvents,
   };
+}
+
+function describeCatFactionEvent(type: string, payload: Record<string, unknown>): string {
+  const faction = String(payload["faction"] ?? "派閥");
+  if (type === "FactionCreated") return `${faction}を結成しました`;
+  if (type === "FactionJoined") return `${faction}に加入しました`;
+  if (type === "CatBecameIndependent") return `${faction}から独立しました`;
+  if (type === "CatExcommunicated") return `${faction}から破門されました`;
+  return `${faction}を離脱しました`;
 }
 
 export type LatestVoteRow = {

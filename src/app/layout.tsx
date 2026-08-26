@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     template: "%s | でぶねこによる民主主義",
   },
   description:
-    "ユーザーの議論を入力として、でぶねこ社会の世論・権力・派閥・思想が継続的に変化していく政治社会シミュレーション。",
+    "ユーザーの議論を入力として、でぶねこ社会の世論・権力・派閥が継続的に変化していく政治社会シミュレーション。",
 };
 
 export default function RootLayout({

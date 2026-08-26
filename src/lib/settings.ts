@@ -8,8 +8,6 @@ export interface EffectiveSettings {
   llmModel: string;
   temperature: number;
   exilePenaltyProb: number;
-  assimilationProb: number;
-  assimilationMinTurns: number;
   changeWindow: number;
   changeThreshold: number;
   runoffTurnLimit: number;
@@ -38,8 +36,6 @@ export async function getEffectiveSettings(): Promise<EffectiveSettings> {
     llmModel: row?.llmModel ?? envSettings().llmModel ?? DEFAULTS.llmModel,
     temperature: row?.temperature ?? DEFAULTS.temperature,
     exilePenaltyProb: row?.exilePenaltyProb ?? DEFAULTS.exilePenaltyProb,
-    assimilationProb: row?.assimilationProb ?? DEFAULTS.assimilationProb,
-    assimilationMinTurns: row?.assimilationMinTurns ?? DEFAULTS.assimilationMinTurns,
     changeWindow: row?.changeWindow ?? DEFAULTS.changeWindow,
     changeThreshold: row?.changeThreshold ?? DEFAULTS.changeThreshold,
     runoffTurnLimit: row?.runoffTurnLimit ?? DEFAULTS.runoffTurnLimit,

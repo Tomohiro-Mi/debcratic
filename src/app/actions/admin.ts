@@ -1,18 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNull, max } from "drizzle-orm";
 import {
   cats,
+  events,
+  factionMemberships,
+  factions,
   opinions,
   proposals,
   reports,
   systemSettings,
+  turns,
   users,
 } from "@/db/schema";
 import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
-import { slugify } from "@/lib/validation";
+import { slugify, uuidSchema } from "@/lib/validation";
 import { encryptSecret } from "@/lib/crypto";
 import { getEffectiveSettings } from "@/lib/settings";
 import { testLlmConnection } from "@/lib/llm";
@@ -29,51 +33,134 @@ export async function upsertCatAction(
   await requireAdmin();
 
   const idRaw = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  const type = String(formData.get("type") ?? "").trim();
-  const icon = String(formData.get("icon") ?? "🐱").trim().slice(0, 8) || "🐱";
-  const gender = String(formData.get("gender") ?? "不明").trim().slice(0, 10) || "不明";
-  const power = Math.max(1, Math.min(10, Number(formData.get("power") ?? 1) || 1));
+  const name = String(formData.get("name") ?? "").trim().slice(0, 60);
+  const icon = String(formData.get("icon") ?? "🐱").trim().slice(0, 16) || "🐱";
+  const iconUrlRaw = String(formData.get("iconUrl") ?? "").trim().slice(0, 1000);
+  const genderRaw = String(formData.get("gender") ?? "セン").trim();
+  const gender = ["オス", "メス", "セン"].includes(genderRaw)
+    ? (genderRaw as "オス" | "メス" | "セン")
+    : null;
+  const powerRaw = Number(formData.get("power") ?? 1);
+  const power = Number.isFinite(powerRaw)
+    ? Math.max(1, Math.min(10, Math.round(powerRaw)))
+    : 1;
+  const factionIdRaw = String(formData.get("factionId") ?? "").trim();
+  const factionId = factionIdRaw || null;
 
-  const params: Record<string, number> = {};
-  for (const [key, value] of formData.entries()) {
-    if (key.startsWith("pp:")) {
-      const pname = key.slice(3).trim();
-      if (!pname) continue;
-      const n = Number(value);
-      if (Number.isFinite(n)) params[pname] = Math.max(1, Math.min(10, Math.round(n)));
+  let iconUrl: string | null = null;
+  if (iconUrlRaw) {
+    try {
+      const parsed = new URL(iconUrlRaw);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return { error: "アイコン画像URLはhttp(s)で指定してください" };
+      }
+      iconUrl = parsed.toString();
+    } catch {
+      return { error: "アイコン画像URLの形式が正しくありません" };
     }
   }
-  if (!name || !type) return { error: "名前と種類は必須です" };
-  if (Object.keys(params).length === 0) {
-    return { error: "恒久パラメータを1つ以上設定してください" };
+  if (!name) return { error: "名前は必須です" };
+  if (!gender) return { error: "性別を選択してください" };
+  if (factionId && !uuidSchema.safeParse(factionId).success) {
+    return { error: "初期所属派閥の指定が正しくありません" };
   }
 
   try {
-    if (idRaw) {
-      await getDb()
-        .update(cats)
-        .set({ name, type, icon, gender, power, permanentParams: params })
-        .where(eq(cats.id, idRaw));
-    } else {
-      const base = slugify(name);
-      let id = base;
-      let i = 2;
-      while ((await getDb().select({ x: cats.id }).from(cats).where(eq(cats.id, id)).limit(1)).length > 0) {
-        id = `${base}-${i++}`;
+    const db = getDb();
+    const selectedFaction = factionId
+      ? (
+          await db
+            .select()
+            .from(factions)
+            .where(and(eq(factions.id, factionId), eq(factions.status, "active")))
+            .limit(1)
+        )[0]
+      : null;
+    if (factionId && !selectedFaction) return { error: "初期所属派閥が見つかりません" };
+
+    await db.transaction(async (tx) => {
+      let id = idRaw;
+      if (!id) {
+        const base = slugify(name);
+        id = base;
+        let i = 2;
+        while ((await tx.select({ x: cats.id }).from(cats).where(eq(cats.id, id)).limit(1)).length > 0) {
+          id = `${base}-${i++}`;
+        }
+        await tx.insert(cats).values({ id, name, icon, iconUrl, gender, power });
+      } else {
+        const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
+        if (!existing) throw new Error("cat not found");
+        await tx
+          .update(cats)
+          .set({ name, icon, iconUrl, gender, power })
+          .where(eq(cats.id, id));
       }
-      await getDb()
-        .insert(cats)
-        .values({
-          id,
-          name,
-          type,
-          icon,
-          gender,
-          power,
-          permanentParams: params,
+
+      const currentMembership = (
+        await tx
+          .select({ membership: factionMemberships, factionLeaderId: factions.leaderId })
+          .from(factionMemberships)
+          .innerJoin(factions, eq(factionMemberships.factionId, factions.id))
+          .where(and(eq(factionMemberships.catId, id), isNull(factionMemberships.leftTurn)))
+          .orderBy(desc(factionMemberships.joinedTurn))
+          .limit(1)
+      )[0];
+      const currentFactionId = currentMembership?.membership.factionId ?? null;
+      let factionEvent: { type: string; payload: Record<string, unknown> } | null = null;
+      let assignmentTurn = 0;
+
+      if (currentFactionId !== factionId) {
+        const latestTurn = Number(
+          (await tx.select({ value: max(turns.number) }).from(turns))[0]?.value ?? -1,
+        );
+        const changeTurn = latestTurn + 1;
+        assignmentTurn = changeTurn;
+        if (currentMembership) {
+          await tx
+            .update(factionMemberships)
+            .set({ leftTurn: changeTurn })
+            .where(eq(factionMemberships.id, currentMembership.membership.id));
+          factionEvent = {
+            type: "FactionLeft",
+            payload: { cat_id: id, cat_name: name, reason: "admin_assignment" },
+          };
+        }
+        if (selectedFaction) {
+          const role = selectedFaction.leaderId === id ? "leader" : "follower";
+          await tx.insert(factionMemberships).values({
+            factionId: selectedFaction.id,
+            catId: id,
+            role,
+            joinedTurn: changeTurn,
+          });
+          factionEvent = {
+            type: "FactionJoined",
+            payload: {
+              cat_id: id,
+              cat_name: name,
+              faction: selectedFaction.name,
+              reason: "admin_assignment",
+            },
+          };
+        }
+      }
+
+      await tx
+        .update(cats)
+        .set({
+          factionId: selectedFaction?.id ?? null,
+          leaderId: selectedFaction?.leaderId ?? null,
+        })
+        .where(eq(cats.id, id));
+      if (factionEvent) {
+        await tx.insert(events).values({
+          turnNumber: assignmentTurn,
+          type: factionEvent.type,
+          payload: factionEvent.payload,
         });
-    }
+      }
+    });
   } catch (err) {
     console.error("[upsertCat]", err);
     return { error: "保存に失敗しました" };
@@ -112,8 +199,6 @@ export async function saveSettingsAction(
     llmModel: String(formData.get("llmModel") ?? "").trim() || null,
     temperature: numOrNull("temperature", 0, 2),
     exilePenaltyProb: numOrNull("exilePenaltyProb", 0, 1),
-    assimilationProb: numOrNull("assimilationProb", 0, 1),
-    assimilationMinTurns: numOrNull("assimilationMinTurns", 1, 50),
     changeWindow: numOrNull("changeWindow", 1, 50),
     changeThreshold: numOrNull("changeThreshold", 1, 10),
     runoffTurnLimit: numOrNull("runoffTurnLimit", 1, 20),

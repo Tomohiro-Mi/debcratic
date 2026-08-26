@@ -6,7 +6,7 @@ export interface SimCat {
   id: string;
   name: string;
   power: number;
-  params: Record<string, number>;
+  topicParams: Record<string, number>;
   factionKey: string | null;
   role: "leader" | "follower" | null;
   joinedTurn: number | null;
@@ -28,8 +28,6 @@ export interface OpinionTurnResult {
 
 export interface TurnSettings {
   exilePenaltyProb: number;
-  assimilationProb: number;
-  assimilationMinTurns: number;
   changeWindow: number;
   changeThreshold: number;
 }
@@ -51,14 +49,6 @@ export interface MembershipOp {
   op: "join" | "leave";
 }
 
-export interface ParamShift {
-  catId: string;
-  param: string;
-  from: number;
-  to: number;
-  reason: "assimilation" | "repulsion";
-}
-
 export interface SocialEvent {
   type: string;
   payload: Record<string, unknown>;
@@ -66,12 +56,10 @@ export interface SocialEvent {
 
 export interface SocialTurnOutput {
   powers: Record<string, number>;
-  finalParams: Record<string, Record<string, number>>;
   powerChanges: { catId: string; before: number; after: number; reason: string }[];
   newFactions: { key: string; name: string; leaderId: string }[];
   dissolvedFactionKeys: string[];
   membershipOps: MembershipOp[];
-  paramShifts: ParamShift[];
   events: SocialEvent[];
 }
 
@@ -110,9 +98,11 @@ export function simulateSocialTurn(input: SocialStateInput): SocialTurnOutput {
   const turn = input.turnNumber;
   const events: SocialEvent[] = [];
   const membershipOps: MembershipOp[] = [];
-  const paramShifts: ParamShift[] = [];
 
-  const cats: SimCat[] = input.cats.map((c) => ({ ...c, params: { ...c.params } }));
+  const cats: SimCat[] = input.cats.map((c) => ({
+    ...c,
+    topicParams: { ...c.topicParams },
+  }));
   const catById = new Map(cats.map((c) => [c.id, c]));
   let factions: SimFaction[] = input.factions.map((f) => ({ ...f }));
   const dissolvedKeys = new Set<string>();
@@ -259,26 +249,6 @@ export function simulateSocialTurn(input: SocialStateInput): SocialTurnOutput {
   for (const c of cats) {
     if (c.role === "follower" && c.power < 3) {
       const f = factions.find((x) => x.key === c.factionKey);
-      const leader = f ? catById.get(f.leaderId) : undefined;
-      if (leader) {
-        for (const [param, lv] of Object.entries(leader.params)) {
-          const sv = c.params[param];
-          if (sv === undefined) continue;
-          let nv: number;
-          if (sv < lv) nv = sv - 1;
-          else if (sv > lv) nv = sv + 1;
-          else nv = sv + (rng.chance(0.5) ? 1 : -1);
-          nv = Math.max(1, Math.min(10, nv));
-          if (nv !== sv) {
-            paramShifts.push({ catId: c.id, param, from: sv, to: nv, reason: "repulsion" });
-            c.params[param] = nv;
-            events.push({
-              type: "ParameterShifted",
-              payload: { cat_id: c.id, cat_name: c.name, param, from: sv, to: nv, reason: "repulsion" },
-            });
-          }
-        }
-      }
       leaveFaction(c, "excommunicated");
       events.push({
         type: "CatExcommunicated",
@@ -334,7 +304,7 @@ export function simulateSocialTurn(input: SocialStateInput): SocialTurnOutput {
       let best: SimCat | undefined;
       let bestSim = -Infinity;
       for (const cand of pool) {
-        const s = similarity(leader.params, cand.params) + rng.float(-0.01, 0.01);
+        const s = similarity(leader.topicParams, cand.topicParams) + rng.float(-0.01, 0.01);
         if (s > bestSim) {
           bestSim = s;
           best = cand;
@@ -363,53 +333,17 @@ export function simulateSocialTurn(input: SocialStateInput): SocialTurnOutput {
     }
   }
 
-  for (const c of cats) {
-    if (c.role !== "follower" || c.joinedTurn === null || !c.factionKey) continue;
-    if (turn - c.joinedTurn < input.settings.assimilationMinTurns) continue;
-    const f = factions.find((x) => x.key === c.factionKey);
-    const leader = f ? catById.get(f.leaderId) : undefined;
-    if (!leader) continue;
-    if (!rng.chance(input.settings.assimilationProb)) continue;
-    const differing = Object.keys(leader.params).filter(
-      (k) => c.params[k] !== undefined && c.params[k] !== leader.params[k],
-    );
-    if (differing.length === 0) continue;
-    const param = rng.pick(differing);
-    const from = c.params[param];
-    const to = clampPower(from + Math.sign(leader.params[param] - from));
-    if (to !== from) {
-      paramShifts.push({ catId: c.id, param, from, to, reason: "assimilation" });
-      c.params[param] = to;
-      events.push({
-        type: "ParameterShifted",
-        payload: {
-          cat_id: c.id,
-          cat_name: c.name,
-          param,
-          from,
-          to,
-          reason: "assimilation",
-          turn,
-        },
-      });
-    }
-  }
-
   const powers: Record<string, number> = {};
-  const finalParams: Record<string, Record<string, number>> = {};
   for (const c of cats) {
     powers[c.id] = c.power;
-    finalParams[c.id] = c.params;
   }
 
   return {
     powers,
-    finalParams,
     powerChanges,
     newFactions,
     dissolvedFactionKeys: [...dissolvedKeys],
     membershipOps,
-    paramShifts,
     events,
   };
 }

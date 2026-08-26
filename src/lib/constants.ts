@@ -17,8 +17,6 @@ export const DEFAULTS = {
   llmModel: "openai/gpt-4o-mini",
   temperature: 0.7,
   exilePenaltyProb: 0.7,
-  assimilationProb: 0.5,
-  assimilationMinTurns: 5,
   changeWindow: 5,
   changeThreshold: 2,
   runoffTurnLimit: 5,

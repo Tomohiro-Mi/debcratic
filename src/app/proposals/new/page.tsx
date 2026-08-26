@@ -39,7 +39,12 @@ export default async function NewProposalPage({
         </p>
       )}
       <ProposalForm
-        cats={cats.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
+        cats={cats.map((c) => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+          iconUrl: c.iconUrl,
+        }))}
       />
     </div>
   );

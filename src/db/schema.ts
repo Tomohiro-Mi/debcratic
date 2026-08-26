@@ -26,14 +26,10 @@ export const users = pgTable("users", {
 export const cats = pgTable("cats", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  type: text("type").notNull(),
   icon: text("icon").notNull().default("🐱"),
-  gender: text("gender").notNull().default("不明"),
+  iconUrl: text("icon_url"),
+  gender: text("gender").$type<"オス" | "メス" | "セン">().notNull().default("セン"),
   power: integer("power").notNull().default(1),
-  permanentParams: jsonb("permanent_params")
-    .$type<Record<string, number>>()
-    .notNull()
-    .default({}),
   factionId: uuid("faction_id"),
   leaderId: text("leader_id"),
   active: boolean("active").notNull().default(true),
@@ -216,8 +212,6 @@ export const systemSettings = pgTable("system_settings", {
   llmApiKeyEnc: text("llm_api_key_enc"),
   temperature: real("temperature"),
   exilePenaltyProb: real("exile_penalty_prob"),
-  assimilationProb: real("assimilation_prob"),
-  assimilationMinTurns: integer("assimilation_min_turns"),
   changeWindow: integer("change_window"),
   changeThreshold: integer("change_threshold"),
   runoffTurnLimit: integer("runoff_turn_limit"),

@@ -7,8 +7,6 @@ import {
 
 const settings = {
   exilePenaltyProb: 0.7,
-  assimilationProb: 0.5,
-  assimilationMinTurns: 5,
   changeWindow: 5,
   changeThreshold: 2,
 };
@@ -16,14 +14,14 @@ const settings = {
 function cat(
   id: string,
   power: number,
-  params: Record<string, number>,
+  topicParams: Record<string, number>,
   overrides: Partial<SocialStateInput["cats"][number]> = {},
 ): SocialStateInput["cats"][number] {
   return {
     id,
     name: id,
     power,
-    params,
+    topicParams,
     factionKey: null,
     role: null,
     joinedTurn: null,
@@ -143,7 +141,7 @@ describe("faction lifecycle", () => {
     expect(leave).toBeDefined();
   });
 
-  it("excommunicates followers below power 3 and shifts values away from leader", () => {
+  it("excommunicates followers below power 3", () => {
     const catsIn = [
       cat("boss", 9, { x: 8, y: 3 }, { factionKey: "f1", role: "leader", joinedTurn: 1 }),
       cat("weak", 2, { x: 6, y: 3 }, { factionKey: "f1", role: "follower", joinedTurn: 1 }),
@@ -155,30 +153,6 @@ describe("faction lifecycle", () => {
       }),
     );
     expect(out.events.some((e) => e.type === "CatExcommunicated")).toBe(true);
-    const shiftX = out.paramShifts.find((s) => s.catId === "weak" && s.param === "x");
-    expect(shiftX).toEqual({ catId: "weak", param: "x", from: 6, to: 5, reason: "repulsion" });
-  });
-
-  it("assimilates followers after enough turns together", () => {
-    const catsIn = [
-      cat("boss", 9, { x: 9 }, { factionKey: "f1", role: "leader", joinedTurn: 1 }),
-      cat("pupil", 4, { x: 5 }, { factionKey: "f1", role: "follower", joinedTurn: 1 }),
-    ];
-    let assimilated = false;
-    for (let i = 0; i < 50 && !assimilated; i++) {
-      const out = simulateSocialTurn(
-        baseInput({
-          turnNumber: 10,
-          seed: `seed-${i}`,
-          cats: catsIn.map((c) => ({ ...c })),
-          factions: [{ key: "f1", name: "boss派", leaderId: "boss", foundedTurn: 1 }],
-        }),
-      );
-      assimilated = out.paramShifts.some(
-        (s) => s.reason === "assimilation" && s.to > s.from,
-      );
-    }
-    expect(assimilated).toBe(true);
   });
 
   it("never recruits a freshly excommunicated cat into another faction in the same turn", () => {

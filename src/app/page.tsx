@@ -37,7 +37,7 @@ export default async function HomePage() {
           <br />
           投稿された意見にでぶねこたちが賛否を表明し、
           <br className="sm:hidden" />
-          権力と派閥と思想が変化していく政治社会シミュレーション。
+          議題への評価と権力と派閥が変化していく政治社会シミュレーション。
         </p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           {session ? (
