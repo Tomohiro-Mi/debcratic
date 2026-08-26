@@ -1,0 +1,216 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { cats, opinions, proposals, reports, users, proposalParameters, proposalCatValues } from "@/db/schema";
+import { getDb } from "@/db";
+import { getSession, requireUser } from "@/lib/auth";
+import { executeTurn } from "@/lib/rules/turn";
+import { beginRunoff } from "@/lib/catchup";
+import { OPINION_RATE_LIMIT_MS } from "@/lib/constants";
+import { opinionContentSchema } from "@/lib/validation";
+
+export interface OpinionActionState {
+  error?: string;
+  success?: string;
+}
+
+export async function createProposalAction(
+  formData: FormData,
+): Promise<void> {
+  const session = await requireUser("/proposals/new");
+  const user = (await getDb().select().from(users).where(eq(users.id, session.userId)).limit(1))[0];
+  if (!user || user.bannedAt) redirect("/");
+
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const deadlineRaw = String(formData.get("deadline") ?? "");
+  const deadline = new Date(deadlineRaw);
+  const paramNames = formData
+    .getAll("paramName")
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0)
+    .slice(0, 5);
+
+  if (!title || title.length > 120) {
+    redirect("/proposals/new?error=title");
+  }
+  if (isNaN(deadline.getTime()) || deadline.getTime() <= Date.now()) {
+    redirect("/proposals/new?error=deadline");
+  }
+  if (paramNames.length === 0) {
+    redirect("/proposals/new?error=params");
+  }
+  if (new Set(paramNames).size !== paramNames.length) {
+    redirect("/proposals/new?error=dup");
+  }
+
+  const activeCats = await getDb().select().from(cats).where(eq(cats.active, true));
+
+  const [proposal] = await getDb()
+    .insert(proposals)
+    .values({
+      title,
+      description,
+      authorId: session.userId,
+      status: "OPEN",
+      deadline,
+    })
+    .returning();
+
+  await getDb().insert(proposalParameters).values(
+    paramNames.map((name, i) => ({
+      proposalId: proposal.id,
+      name,
+      sortOrder: i,
+    })),
+  );
+
+  const valuesRows = activeCats.map((c) => {
+    const values: Record<string, number> = {};
+    for (const p of paramNames) {
+      const raw = formData.get(`cv:${c.id}:${p}`);
+      const n = Number(raw);
+      values[p] = Number.isFinite(n) ? Math.max(1, Math.min(10, Math.round(n))) : 5;
+    }
+    return { proposalId: proposal.id, catId: c.id, values };
+  });
+  await getDb().insert(proposalCatValues).values(valuesRows);
+
+  revalidatePath("/");
+  redirect(`/proposals/${proposal.id}`);
+}
+
+export async function postOpinionAction(
+  _prev: OpinionActionState,
+  formData: FormData,
+): Promise<OpinionActionState> {
+  const proposalId = String(formData.get("proposalId") ?? "");
+  const parsed = opinionContentSchema.safeParse(formData.get("content"));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "意見を入力してください" };
+  }
+
+  const session = await getSession();
+  if (!session) {
+    return { error: "投稿にはログインが必要です" };
+  }
+  const user = (
+    await getDb().select().from(users).where(eq(users.id, session.userId)).limit(1)
+  )[0];
+  if (!user || user.bannedAt) {
+    return { error: "投稿できません" };
+  }
+
+  const proposal = (
+    await getDb().select().from(proposals).where(eq(proposals.id, proposalId)).limit(1)
+  )[0];
+  if (!proposal || proposal.deletedAt || proposal.status !== "OPEN") {
+    return { error: "この議題には投稿できません" };
+  }
+
+  const recent = await getDb()
+    .select({ createdAt: opinions.createdAt })
+    .from(opinions)
+    .where(and(eq(opinions.proposalId, proposalId), eq(opinions.authorId, session.userId)))
+    .orderBy(desc(opinions.createdAt))
+    .limit(1);
+  const last = recent[0]?.createdAt;
+  if (last && Date.now() - last.getTime() < OPINION_RATE_LIMIT_MS) {
+    const waitMin = Math.ceil(
+      (OPINION_RATE_LIMIT_MS - (Date.now() - last.getTime())) / 60000,
+    );
+    return { error: `連続投稿を防ぐため、あと${waitMin}分待ってから投稿してください` };
+  }
+
+  const [opinion] = await getDb()
+    .insert(opinions)
+    .values({
+      proposalId,
+      authorId: session.userId,
+      content: parsed.data,
+      nextVoteDue: new Date(),
+    })
+    .returning();
+
+  try {
+    await executeTurn({
+      proposalId,
+      kind: "initial",
+      dueOpinionIds: [opinion.id],
+    });
+  } catch (err) {
+    console.error("[postOpinion] initial turn failed:", err);
+  }
+
+  revalidatePath(`/proposals/${proposalId}`);
+  revalidatePath("/");
+  return { success: "意見を投稿しました。猫たちの投票をお楽しみに 🐾" };
+}
+
+export async function startRunoffAction(formData: FormData): Promise<void> {
+  const proposalId = String(formData.get("proposalId") ?? "");
+  const session = await getSession();
+  if (!session) redirect(`/proposals/${proposalId}`);
+  const proposal = (
+    await getDb().select().from(proposals).where(eq(proposals.id, proposalId)).limit(1)
+  )[0];
+  const isAllowed =
+    proposal &&
+    !proposal.deletedAt &&
+    proposal.status === "RUNOFF_PENDING" &&
+    (session.role === "admin" || proposal.authorId === session.userId);
+  if (isAllowed) {
+    await beginRunoff(proposalId);
+    revalidatePath(`/proposals/${proposalId}`);
+  }
+  redirect(`/proposals/${proposalId}`);
+}
+
+export async function reportTargetAction(formData: FormData): Promise<void> {
+  const targetType = String(formData.get("targetType") ?? "") as "opinion" | "proposal";
+  const targetId = String(formData.get("targetId") ?? "");
+  const reason = String(formData.get("reason") ?? "").slice(0, 500);
+  const session = await getSession();
+  if (!session || !["opinion", "proposal"].includes(targetType) || !targetId) {
+    return;
+  }
+  const dup = await getDb()
+    .select({ id: reports.id })
+    .from(reports)
+    .where(
+      and(
+        eq(reports.reporterId, session.userId),
+        eq(reports.targetId, targetId),
+        isNull(reports.resolvedAt),
+      ),
+    )
+    .limit(1);
+  if (dup.length === 0) {
+    await getDb().insert(reports).values({
+      reporterId: session.userId,
+      targetType,
+      targetId,
+      reason,
+    });
+  }
+  revalidatePath("/admin");
+}
+
+export async function deleteOpinionAction(formData: FormData): Promise<void> {
+  const opinionId = String(formData.get("opinionId") ?? "");
+  const session = await getSession();
+  if (!session || !opinionId) return;
+  const op = (
+    await getDb().select().from(opinions).where(eq(opinions.id, opinionId)).limit(1)
+  )[0];
+  if (!op || op.deletedAt) return;
+  if (session.role !== "admin" && op.authorId !== session.userId) return;
+
+  await getDb()
+    .update(opinions)
+    .set({ deletedAt: new Date(), eligible: false })
+    .where(eq(opinions.id, opinionId));
+  revalidatePath(`/proposals/${op.proposalId}`);
+}

@@ -1,0 +1,31 @@
+export const POWER_MIN = 1;
+export const POWER_MAX = 10;
+export const LEADER_POWER_THRESHOLD = 8;
+export const FOLLOWER_MAX_POWER = 5;
+export const INDEPENDENT_POWER = 5;
+export const EXCOMMUNICATE_BELOW = 3;
+
+export const STANCE_FOR_MIN = 2;
+export const STANCE_AGAINST_MAX = -2;
+
+export const SCORE_MIN = -10;
+export const SCORE_MAX = 10;
+
+export const PROMPT_VERSION = "vote-v1";
+
+export const DEFAULTS = {
+  llmModel: "openai/gpt-4o-mini",
+  temperature: 0.7,
+  exilePenaltyProb: 0.7,
+  assimilationProb: 0.5,
+  assimilationMinTurns: 5,
+  changeWindow: 5,
+  changeThreshold: 2,
+  runoffTurnLimit: 5,
+} as const;
+
+export const OPINION_RATE_LIMIT_MS = 10 * 60 * 1000;
+
+export const TURN_LOCK_SECONDS = 40;
+export const MAX_CATCHUP_TURNS = 24;
+export const RUNOFF_AUTO_START_HOURS = 24;
