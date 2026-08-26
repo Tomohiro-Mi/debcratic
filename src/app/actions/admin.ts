@@ -31,6 +31,8 @@ import {
 import { testLlmConnection } from "@/lib/llm";
 import {
   DEFAULTS,
+  FOLLOWER_MAX_POWER,
+  LEADER_POWER_THRESHOLD,
   MAX_VOTE_INTERVAL_MINUTES,
   MIN_VOTE_INTERVAL_MINUTES,
 } from "@/lib/constants";
@@ -78,8 +80,9 @@ export async function upsertCatAction(
   const power = Number.isFinite(powerRaw)
     ? Math.max(1, Math.min(10, Math.round(powerRaw)))
     : 1;
+  const wantsLeader = formData.get("isLeader") === "1";
   const factionIdRaw = String(formData.get("factionId") ?? "").trim();
-  const factionId = factionIdRaw || null;
+  const factionId = power <= FOLLOWER_MAX_POWER && !wantsLeader ? factionIdRaw || null : null;
 
   let iconUrl: string | null = null;
   if (iconUrlRaw) {
@@ -95,6 +98,9 @@ export async function upsertCatAction(
   }
   if (!name) return { error: "名前は必須です" };
   if (!gender) return { error: "性別を選択してください" };
+  if (wantsLeader && power < LEADER_POWER_THRESHOLD) {
+    return { error: "リーダーにできるのは権力8以上の猫だけです" };
+  }
   if (factionId && !uuidSchema.safeParse(factionId).success) {
     return { error: "初期所属派閥の指定が正しくありません" };
   }
@@ -140,24 +146,67 @@ export async function upsertCatAction(
           .where(eq(cats.id, id));
       }
 
-      const currentMembership = (
-        await tx
-          .select({ membership: factionMemberships, factionLeaderId: factions.leaderId })
-          .from(factionMemberships)
-          .innerJoin(factions, eq(factionMemberships.factionId, factions.id))
+    const currentMembership = (
+      await tx
+        .select({
+          membership: factionMemberships,
+          factionId: factions.id,
+          factionLeaderId: factions.leaderId,
+        })
+        .from(factionMemberships)
+        .innerJoin(factions, eq(factionMemberships.factionId, factions.id))
           .where(and(eq(factionMemberships.catId, id), isNull(factionMemberships.leftTurn)))
           .orderBy(desc(factionMemberships.joinedTurn))
           .limit(1)
       )[0];
-      const currentFactionId = currentMembership?.membership.factionId ?? null;
-      let factionEvent: { type: string; payload: Record<string, unknown> } | null = null;
-      let assignmentTurn = 0;
+    const currentFactionId = currentMembership?.membership.factionId ?? null;
+    const latestTurn = Number(
+      (await tx.select({ value: max(turns.number) }).from(turns))[0]?.value ?? -1,
+    );
+    const changeTurn = latestTurn + 1;
 
-      if (currentFactionId !== factionId) {
-        const latestTurn = Number(
-          (await tx.select({ value: max(turns.number) }).from(turns))[0]?.value ?? -1,
-        );
-        const changeTurn = latestTurn + 1;
+    let desiredFaction: { id: string; name: string; leaderId: string } | null = selectedFaction
+      ? { id: selectedFaction.id, name: selectedFaction.name, leaderId: selectedFaction.leaderId }
+      : null;
+    if (wantsLeader) {
+      const factionName = `${name}派`;
+      if (currentMembership?.factionLeaderId === id && currentMembership.factionId) {
+        desiredFaction = {
+          id: currentMembership.factionId,
+          name: factionName,
+          leaderId: id,
+        };
+        await tx
+          .update(factions)
+          .set({ name: factionName, leaderId: id })
+          .where(eq(factions.id, currentMembership.factionId));
+      } else {
+        const created = (
+          await tx
+            .insert(factions)
+            .values({ name: factionName, leaderId: id, foundedTurn: changeTurn })
+            .returning({ id: factions.id, name: factions.name, leaderId: factions.leaderId })
+        )[0];
+        if (!created) throw new Error("faction creation failed");
+        desiredFaction = created;
+      }
+    } else if (desiredFaction) {
+      const leader = (
+        await tx.select({ name: cats.name }).from(cats).where(eq(cats.id, desiredFaction.leaderId)).limit(1)
+      )[0];
+      const factionName = `${leader?.name ?? desiredFaction.name}派`;
+      desiredFaction = { ...desiredFaction, name: factionName };
+      await tx
+        .update(factions)
+        .set({ name: factionName })
+        .where(eq(factions.id, desiredFaction.id));
+    }
+
+    const desiredFactionId = desiredFaction?.id ?? null;
+    let factionEvent: { type: string; payload: Record<string, unknown> } | null = null;
+    let assignmentTurn = 0;
+
+      if (currentFactionId !== desiredFactionId) {
         assignmentTurn = changeTurn;
         if (currentMembership) {
           await tx
@@ -169,10 +218,10 @@ export async function upsertCatAction(
             payload: { cat_id: id, cat_name: name, reason: "admin_assignment" },
           };
         }
-        if (selectedFaction) {
-          const role = selectedFaction.leaderId === id ? "leader" : "follower";
+        if (desiredFaction) {
+          const role = desiredFaction.leaderId === id ? "leader" : "follower";
           await tx.insert(factionMemberships).values({
-            factionId: selectedFaction.id,
+            factionId: desiredFaction.id,
             catId: id,
             role,
             joinedTurn: changeTurn,
@@ -182,7 +231,7 @@ export async function upsertCatAction(
             payload: {
               cat_id: id,
               cat_name: name,
-              faction: selectedFaction.name,
+              faction: desiredFaction.name,
               reason: "admin_assignment",
             },
           };
@@ -192,8 +241,8 @@ export async function upsertCatAction(
       await tx
         .update(cats)
         .set({
-          factionId: selectedFaction?.id ?? null,
-          leaderId: selectedFaction?.leaderId ?? null,
+          factionId: desiredFaction?.id ?? null,
+          leaderId: desiredFaction?.leaderId ?? null,
         })
         .where(eq(cats.id, id));
       if (factionEvent) {

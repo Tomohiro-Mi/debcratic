@@ -58,7 +58,7 @@ export async function getSocietyState() {
     const leader = f && c.id !== f.leaderId ? nameById.get(f.leaderId) ?? null : null;
     return {
       ...c,
-      factionName: f?.name ?? null,
+      factionName: f ? `${nameById.get(f.leaderId) ?? f.name}派` : null,
       role: mem?.role ?? null,
       leaderName: leader,
     };
@@ -67,6 +67,7 @@ export async function getSocietyState() {
   const factionsView = factionRows
     .map((f) => ({
       ...f,
+      name: `${nameById.get(f.leaderId) ?? f.name}派`,
       leaderName: nameById.get(f.leaderId) ?? f.leaderId,
       members: catsView.filter((c) => c.factionId === f.id),
     }))

@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   saveSettingsAction,
   testLlmConnectionAction,
   upsertCatAction,
   type AdminActionState,
 } from "@/app/actions/admin";
+import { FOLLOWER_MAX_POWER, LEADER_POWER_THRESHOLD } from "@/lib/constants";
 
 export function CatForm({
   editingCat,
@@ -20,6 +21,7 @@ export function CatForm({
     gender: "オス" | "メス" | "セン";
     power: number;
     factionId: string | null;
+    role: "leader" | "follower" | null;
   } | null;
   factions: { id: string; name: string; leaderName: string }[];
 }) {
@@ -28,6 +30,12 @@ export function CatForm({
     {},
   );
   const c = editingCat ?? null;
+  const [name, setName] = useState(c?.name ?? "");
+  const [power, setPower] = useState(c?.power ?? 5);
+  const [isLeader, setIsLeader] = useState(c?.role === "leader");
+  const [factionId, setFactionId] = useState(c?.role === "follower" ? c.factionId ?? "" : "");
+  const canLead = power >= LEADER_POWER_THRESHOLD;
+  const canFollow = power <= FOLLOWER_MAX_POWER;
 
   return (
     <form action={formAction} encType="multipart/form-data" className="card">
@@ -36,7 +44,13 @@ export function CatForm({
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label">名前</label>
-          <input name="name" required defaultValue={c?.name} className="input" />
+          <input
+            name="name"
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="input"
+          />
         </div>
         <div>
           <label className="label">アイコン（絵文字フォールバック）</label>
@@ -83,24 +97,57 @@ export function CatForm({
             type="number"
             min={1}
             max={10}
-            defaultValue={c?.power ?? 5}
+            value={power}
+            onChange={(event) => setPower(Number(event.target.value) || 0)}
             className="input"
           />
         </div>
-        <div>
-          <label className="label">初期所属派閥（任意）</label>
-          <select name="factionId" defaultValue={c?.factionId ?? ""} className="input">
-            <option value="">無所属</option>
-            {factions.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}（リーダー: {f.leaderName}）
-              </option>
-            ))}
-          </select>
-          {factions.length === 0 && (
-            <p className="mt-1 text-[11px] text-stone-400">活動中の派閥がないため、現在は無所属になります。</p>
-          )}
-        </div>
+        {canLead && (
+          <div className="rounded-xl border border-orange-100 bg-orange-50/60 p-3">
+            <label className="flex items-start gap-2 text-sm font-bold">
+              <input
+                name="isLeader"
+                type="checkbox"
+                value="1"
+                checked={isLeader}
+                onChange={(event) => setIsLeader(event.target.checked)}
+                className="mt-0.5 accent-orange-500"
+              />
+              <span>
+                リーダーにする
+                <span className="mt-0.5 block text-xs font-normal text-stone-500">
+                  派閥名: {name.trim() || "猫名"}派
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
+        {canFollow && (
+          <div>
+            <label className="label">初期所属派閥（子分）</label>
+            <select
+              name="factionId"
+              value={factionId}
+              onChange={(event) => setFactionId(event.target.value)}
+              className="input"
+            >
+              <option value="">無所属</option>
+              {factions.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.leaderName}派
+                </option>
+              ))}
+            </select>
+            {factions.length === 0 && (
+              <p className="mt-1 text-[11px] text-stone-400">活動中の派閥がないため、現在は無所属になります。</p>
+            )}
+          </div>
+        )}
+        {!canLead && !canFollow && (
+          <p className="rounded-xl bg-stone-50 p-3 text-xs text-stone-500">
+            権力6〜7では初期派閥を設定できません（無所属になります）。
+          </p>
+        )}
       </div>
       {state.error && <p className="mt-3 text-sm font-bold text-red-600">{state.error}</p>}
       {state.success && (

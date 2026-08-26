@@ -45,9 +45,10 @@ export default async function AdminPage() {
   ];
   const factionOptions = factionRows.map((f) => ({
     id: f.id,
-    name: f.name,
+    name: `${catRows.find((c) => c.id === f.leaderId)?.name ?? f.leaderId}派`,
     leaderName: catRows.find((c) => c.id === f.leaderId)?.name ?? f.leaderId,
   }));
+  const factionNameById = new Map(factionOptions.map((f) => [f.id, f.name]));
 
   return (
     <div className="space-y-6">
@@ -88,7 +89,7 @@ export default async function AdminPage() {
                   </td>
                   <td className="tabular-nums">⚡{c.power}</td>
                   <td className="text-xs">
-                    {factionRows.find((f) => f.id === c.factionId)?.name ?? "無所属"}
+                    {c.factionId ? factionNameById.get(c.factionId) ?? "無所属" : "無所属"}
                   </td>
                   <td className="text-xs">{c.active ? "活動中" : "停止中"}</td>
                   <td className="text-right">
@@ -106,6 +107,11 @@ export default async function AdminPage() {
                               gender: c.gender,
                               power: c.power,
                               factionId: c.factionId,
+                              role: c.factionId
+                                ? c.id === factionRows.find((f) => f.id === c.factionId)?.leaderId
+                                  ? "leader"
+                                  : "follower"
+                                : null,
                             }}
                           />
                         </div>
