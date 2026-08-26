@@ -212,6 +212,7 @@ export const llmLogs = pgTable("llm_logs", {
 export const systemSettings = pgTable("system_settings", {
   id: integer("id").primaryKey().default(1),
   llmModel: text("llm_model"),
+  llmApiKeyEnc: text("llm_api_key_enc"),
   temperature: real("temperature"),
   exilePenaltyProb: real("exile_penalty_prob"),
   assimilationProb: real("assimilation_prob"),

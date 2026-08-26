@@ -50,7 +50,7 @@
 - Event Sourcing（全状態変化をイベント記録 → タイムライン・履歴・グラフ再現）
 - UI: 議題ランキング/各猫の投票カード（理由+要因内訳）/猫プロフィール/権力グラフ/派閥一覧/猫社会タイムライン
 - 決選投票フロー（同率1位 → RUNOFF_PENDING → 発案者開始 or 24h自動 → 5ターン → タイブレーク）
-- 管理：猫CRUD、LLM設定（モデル/temperature/各種閾値）、通報・削除・BAN
+- 管理：猫CRUD、**LLM設定（API KEY暗号化保存/モデル候補付き選択/temperature/各種閾値/接続テスト）**、通報・削除・BAN
 - Rate Limit（同一議題への投稿は10分間隔）、Prompt Injection対策（`<user_opinion>`分離）
 
 ### Turn処理順（§43 準拠）
@@ -74,7 +74,7 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `DATABASE_URL` | ✅ | Postgres 接続URL（Neon / Vercel Postgres / ローカル等） |
 | `AUTH_SECRET` | ✅ | セッション署名用の長いランダム文字列 |
-| `OPENROUTER_API_KEY` | - | 未設定なら**デモモード**（決定論的なモック投票で全機能動作） |
+| `OPENROUTER_API_KEY` | - | 未設定なら**デモモード**（決定論的なモック投票で全機能動作）。**管理画面からも設定可（暗号化保存・環境変数より優先）** |
 | `OPENROUTER_MODEL` | - | 既定 `openai/gpt-4o-mini`（管理画面でも変更可） |
 | `ADMIN_EMAIL` | - | このメールで登録すると管理者になる |
 | `CRON_SECRET` | - | 設定すると `/api/cron` を Bearer 認証で保護 |
@@ -135,5 +135,5 @@ src/
 
 - **LLMが判断しないもの**: 権力変動・派閥成立/解散/破門・Point計算・決選投票はすべて Rule Engine が決定論的に処理（§22）。LLMは賛同度・理由・要因の生成のみ。
 - **Seed付き乱数**: 各Turnの `random_seed` を保存し、同一入力から同一結果を再現可能（§44）。
-- **API KEY**: ブラウザへ送信されません。サーバーのServer Action / Route Handler 内でのみ使用（§67）。
+- **API KEY**: 管理画面から保存すると AES-256-GCM（`AUTH_SECRET`由来の鍵）で暗号化してDBに保存。ブラウザへは送信されず、UIでは下4桁のみ表示（§67）。環境変数 `OPENROUTER_API_KEY` も利用可（DB保存キーが優先）。
 - **監査ログ**: 全LLM呼び出しを `llm_logs` に記録（model/prompt_version/input_hash/output、§68）。

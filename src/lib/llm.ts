@@ -111,6 +111,67 @@ ${catBlocks}
 {"votes": {"<cat_id>": {"score": <整数 -10..10>, "reason": "<猫の発言>", "confidence": <0..1>, "factors": [{"label": "...", "delta": <-3..3>}]}}}`;
 }
 
+export const POPULAR_MODELS = [
+  "openai/gpt-4o-mini",
+  "openai/gpt-4.1-mini",
+  "anthropic/claude-3.5-haiku",
+  "anthropic/claude-sonnet-4",
+  "google/gemini-2.0-flash-001",
+  "google/gemini-2.5-flash",
+  "meta-llama/llama-3.3-70b-instruct",
+  "mistralai/mistral-small-24b-instruct-2501",
+  "openai/gpt-oss-20b:free",
+] as const;
+
+export async function fetchOpenRouterModels(): Promise<string[]> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models", {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { data?: { id?: string }[] };
+    return (data.data ?? [])
+      .map((m) => m.id)
+      .filter((id): id is string => Boolean(id))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+export async function testLlmConnection(
+  apiKey: string,
+  model: string,
+): Promise<{ ok: true; model: string } | { ok: false; error: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "debuneko-democracy",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 5,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${res.status}: ${text}` };
+    }
+    return { ok: true, model };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function hashInput(input: LLMVoteInput): string {
   const canonical = JSON.stringify({
     o: input.opinionId,

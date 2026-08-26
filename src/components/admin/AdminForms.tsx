@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import {
   saveSettingsAction,
+  testLlmConnectionAction,
   upsertCatAction,
   type AdminActionState,
 } from "@/app/actions/admin";
@@ -107,6 +108,7 @@ export function CatForm({
 
 export function SettingsForm({
   s,
+  modelOptions,
 }: {
   s: {
     llmModel: string;
@@ -118,12 +120,19 @@ export function SettingsForm({
     changeThreshold: number;
     runoffTurnLimit: number;
     hasApiKey: boolean;
+    apiKeySource: "db" | "env" | null;
+    apiKeyHint: string | null;
   };
+  modelOptions: string[];
 }) {
   const [state, formAction, pending] = useActionState<AdminActionState, FormData>(
     saveSettingsAction,
     {},
   );
+  const [testState, testAction, testing] = useActionState<
+    AdminActionState,
+    FormData
+  >(testLlmConnectionAction, {});
 
   const field = (
     name: string,
@@ -143,35 +152,106 @@ export function SettingsForm({
     </div>
   );
 
+  const keyStatus = s.apiKeySource === "db"
+    ? `保存済み ${s.apiKeyHint ?? ""}（入力しない場合は現在のキーを維持します）`
+    : s.apiKeySource === "env"
+      ? "環境変数 OPENROUTER_API_KEY で設定中 — ここに保存するとDBが優先されます"
+      : "未設定（デモモードで動作中）";
+
   return (
-    <form action={formAction} className="card">
-      <p className="section-title">⚙️ システム設定</p>
-      <p className="mb-3 text-xs text-stone-500">
-        未入力の項目は既定値を使用します。OpenRouter APIキーは環境変数{" "}
-        <code className="rounded bg-stone-100 px-1">OPENROUTER_API_KEY</code>{" "}
-        でのみ設定できます（現在:{" "}
-        <b>{s.hasApiKey ? "設定済み ✅ 実際のLLMで投票" : "未設定 ❌ デモモードで動作"}</b>）
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="label">使用モデル</label>
-          <input name="llmModel" defaultValue={s.llmModel} className="input" />
+    <div className="space-y-4">
+      <datalist id="model-options">
+        {modelOptions.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
+      <form action={formAction} className="card">
+        <p className="section-title">⚙️ システム設定</p>
+
+        <div className="mb-4 rounded-xl bg-amber-50 p-3">
+          <p className="label !text-amber-700">OpenRouter API KEY</p>
+          <input
+            name="llmApiKey"
+            type="password"
+            autoComplete="off"
+            className="input"
+            placeholder="sk-or-v1-..."
+          />
+          <p className="mt-1.5 text-xs text-amber-700">
+            現状: {keyStatus}
+          </p>
+          <p className="mt-0.5 text-[10px] text-amber-600/80">
+            キーは暗号化(AES-256-GCM)してDBに保存され、ブラウザには送信されません。
+          </p>
+          {s.apiKeySource === "db" && (
+            <button
+              type="submit"
+              name="clearApiKey"
+              value="1"
+              className="btn btn-danger mt-2 !px-3 !py-1 text-xs"
+            >
+              保存したキーを削除
+            </button>
+          )}
         </div>
-        {field("temperature", "temperature", s.temperature, { step: "0.1" })}
-        {field("exilePenaltyProb", "豹変ペナルティ確率", s.exilePenaltyProb, { step: "0.05" })}
-        {field("assimilationProb", "思想同化確率", s.assimilationProb, { step: "0.05" })}
-        {field("assimilationMinTurns", "思想同化までの最低同棲ターン", s.assimilationMinTurns)}
-        {field("changeWindow", "意見変更判定ウィンドウ(ターン)", s.changeWindow)}
-        {field("changeThreshold", "意見変更ペナルティしきい値(回)", s.changeThreshold)}
-        {field("runoffTurnLimit", "決選投票ターン数", s.runoffTurnLimit)}
-      </div>
-      {state.error && <p className="mt-3 text-sm font-bold text-red-600">{state.error}</p>}
-      {state.success && (
-        <p className="mt-3 text-sm font-bold text-green-600">{state.success}</p>
-      )}
-      <button type="submit" disabled={pending} className="btn btn-primary mt-4">
-        {pending ? "保存中…" : "設定を保存"}
-      </button>
-    </form>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="label">使用モデル</label>
+            <input
+              name="llmModel"
+              defaultValue={s.llmModel}
+              className="input"
+              list="model-options"
+              placeholder="openai/gpt-4o-mini"
+            />
+            <p className="mt-1 text-[10px] text-stone-400">
+              入力して候補から選択、または自由入力（OpenRouterのモデルID）。
+            </p>
+          </div>
+          {field("temperature", "temperature", s.temperature, { step: "0.1" })}
+          {field("exilePenaltyProb", "豹変ペナルティ確率", s.exilePenaltyProb, { step: "0.05" })}
+          {field("assimilationProb", "思想同化確率", s.assimilationProb, { step: "0.05" })}
+          {field("assimilationMinTurns", "思想同化までの最低同棲ターン", s.assimilationMinTurns)}
+          {field("changeWindow", "意見変更判定ウィンドウ(ターン)", s.changeWindow)}
+          {field("changeThreshold", "意見変更ペナルティしきい値(回)", s.changeThreshold)}
+          {field("runoffTurnLimit", "決選投票ターン数", s.runoffTurnLimit)}
+        </div>
+        {state.error && <p className="mt-3 text-sm font-bold text-red-600">{state.error}</p>}
+        {state.success && (
+          <p className="mt-3 text-sm font-bold text-green-600">{state.success}</p>
+        )}
+        <button type="submit" disabled={pending} className="btn btn-primary mt-4">
+          {pending ? "保存中…" : "設定を保存"}
+        </button>
+      </form>
+
+      <form action={testAction} className="card">
+        <p className="section-title">🔌 接続テスト</p>
+        <p className="text-xs text-stone-500">
+          保存済みのAPIキーとモデルでOpenRouterに実際に接続します。先に「設定を保存」してください。
+          現在の状態:{" "}
+          <b>
+            {s.hasApiKey
+              ? `キーあり(${s.apiKeySource === "db" ? "DB" : "環境変数"}) / ${s.llmModel}`
+              : "キーなし（デモモード）"}
+          </b>
+        </p>
+        {testState.error && (
+          <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600">
+            {testState.error}
+          </p>
+        )}
+        {testState.success && (
+          <p className="mt-2 rounded-xl bg-green-50 px-3 py-2 text-sm font-bold text-green-700">
+            {testState.success}
+          </p>
+        )}
+        <button type="submit" disabled={testing} className="btn btn-ghost mt-3">
+          {testing ? "テスト中…" : "接続テストを実行"}
+        </button>
+      </form>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { getEffectiveSettings } from "@/lib/settings";
 import { CatForm, SettingsForm } from "@/components/admin/AdminForms";
+import { fetchOpenRouterModels, POPULAR_MODELS } from "@/lib/llm";
 import {
   resolveReportAction,
   moderateOpinionAction,
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [catRows, settings, reportRows, userRows] = await Promise.all([
+  const [catRows, settings, reportRows, userRows, remoteModels] = await Promise.all([
     getDb().select().from(cats).orderBy(desc(cats.power)),
     getEffectiveSettings(),
     getDb()
@@ -34,7 +35,12 @@ export default async function AdminPage() {
       .from(users)
       .orderBy(desc(users.createdAt))
       .limit(30),
+    fetchOpenRouterModels(),
   ]);
+
+  const modelOptions = [
+    ...new Set([...POPULAR_MODELS, ...remoteModels]),
+  ];
 
   return (
     <div className="space-y-6">
@@ -45,7 +51,7 @@ export default async function AdminPage() {
         </p>
       </div>
 
-      <SettingsForm s={settings} />
+      <SettingsForm s={settings} modelOptions={modelOptions} />
 
       <CatForm />
 

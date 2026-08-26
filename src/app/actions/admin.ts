@@ -13,6 +13,9 @@ import {
 import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { slugify } from "@/lib/validation";
+import { encryptSecret } from "@/lib/crypto";
+import { getEffectiveSettings } from "@/lib/settings";
+import { testLlmConnection } from "@/lib/llm";
 
 export interface AdminActionState {
   error?: string;
@@ -105,7 +108,7 @@ export async function saveSettingsAction(
     return Math.max(min, Math.min(max, n));
   };
 
-  const values = {
+  const values: typeof systemSettings.$inferInsert = {
     llmModel: String(formData.get("llmModel") ?? "").trim() || null,
     temperature: numOrNull("temperature", 0, 2),
     exilePenaltyProb: numOrNull("exilePenaltyProb", 0, 1),
@@ -117,13 +120,39 @@ export async function saveSettingsAction(
     updatedAt: new Date(),
   };
 
+  const wantsClear = formData.get("clearApiKey") === "1";
+  const rawKey = String(formData.get("llmApiKey") ?? "").trim();
+  if (wantsClear) {
+    values.llmApiKeyEnc = null;
+  } else if (rawKey) {
+    values.llmApiKeyEnc = encryptSecret(rawKey);
+  }
+
   await getDb()
     .insert(systemSettings)
     .values({ id: 1, ...values })
     .onConflictDoUpdate({ target: systemSettings.id, set: values });
 
   revalidatePath("/admin");
+  if (wantsClear) return { success: "APIキーを削除しました" };
+  if (rawKey) return { success: "設定を保存しました（APIキー更新済み）" };
   return { success: "設定を保存しました" };
+}
+
+export async function testLlmConnectionAction(
+  _prev: AdminActionState,
+  _formData: FormData,
+): Promise<AdminActionState> {
+  await requireAdmin();
+  const s = await getEffectiveSettings();
+  if (!s.apiKey) {
+    return { error: "APIキーが未設定です（現在はデモモードで動作中）" };
+  }
+  const result = await testLlmConnection(s.apiKey, s.llmModel);
+  if (result.ok) {
+    return { success: `接続OK: ${result.model} で投票できます 🐾` };
+  }
+  return { error: `接続失敗: ${result.error}` };
 }
 
 export async function resolveReportAction(formData: FormData): Promise<void> {
