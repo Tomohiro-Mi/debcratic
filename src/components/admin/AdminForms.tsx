@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   saveSettingsAction,
   testLlmConnectionAction,
@@ -37,12 +37,11 @@ export function CatForm({
   const [gender, setGender] = useState<"オス" | "メス" | "セン">(c?.gender ?? "セン");
   const [isLeader, setIsLeader] = useState(c?.role === "leader");
   const [factionId, setFactionId] = useState(c?.role === "follower" ? c.factionId ?? "" : "");
-  const formRef = useRef<HTMLFormElement>(null);
   const canLead = power >= LEADER_POWER_THRESHOLD;
   const canFollow = power <= FOLLOWER_MAX_POWER;
 
   return (
-    <form ref={formRef} action={formAction} encType="multipart/form-data" className="card">
+    <form action={formAction} encType="multipart/form-data" className="card">
       <div className="flex items-center justify-between gap-2">
         <p className="section-title">{c ? `🐱 ${c.name} を編集` : "➕ 猫を追加"}</p>
         {c && (
@@ -50,7 +49,10 @@ export function CatForm({
             type="button"
             aria-label="編集を閉じる"
             title="編集を閉じる"
-            onClick={() => formRef.current?.closest("details")?.removeAttribute("open")}
+            onClick={(event) => {
+              const details = event.currentTarget.form?.closest("details");
+              if (details) details.open = false;
+            }}
             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-xl leading-none text-stone-400 hover:bg-orange-50 hover:text-orange-600"
           >
             ×
