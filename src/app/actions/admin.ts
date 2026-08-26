@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 import {
@@ -146,7 +146,34 @@ export async function upsertCatAction(
         while ((await tx.select({ x: cats.id }).from(cats).where(eq(cats.id, id)).limit(1)).length > 0) {
           id = `${base}-${i++}`;
         }
-        await tx.insert(cats).values({ id, name, icon, gender, power });
+        // Production may still have legacy NOT NULL columns from before the
+        // type and permanent-parameter fields were removed from the product.
+        // Keep those fields out of the app while supplying compatibility data
+        // only when the old columns actually exist in the connected database.
+        const legacyColumnRows = (await tx.execute(sql`
+          select column_name
+          from information_schema.columns
+          where table_schema = current_schema()
+            and table_name = 'cats'
+            and column_name in ('type', 'permanent_params')
+        `)) as Array<{ column_name: string }>;
+        const legacyColumns = new Set(legacyColumnRows.map((row) => row.column_name));
+
+        if (legacyColumns.has("type")) {
+          if (legacyColumns.has("permanent_params")) {
+            await tx.execute(sql`
+              insert into "cats" ("id", "name", "type", "icon", "gender", "power", "permanent_params")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${power}, '{}'::jsonb)
+            `);
+          } else {
+            await tx.execute(sql`
+              insert into "cats" ("id", "name", "type", "icon", "gender", "power")
+              values (${id}, ${name}, ${name}, ${icon}, ${gender}, ${power})
+            `);
+          }
+        } else {
+          await tx.insert(cats).values({ id, name, icon, gender, power });
+        }
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
         if (!existing) throw new Error("cat not found");
