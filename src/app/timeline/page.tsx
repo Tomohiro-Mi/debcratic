@@ -1,9 +1,11 @@
 import { getGlobalEvents } from "@/lib/queries";
 import { TimelineList } from "@/components/TimelineList";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function TimelinePage() {
+  await requireUser("/timeline");
   const rows = await getGlobalEvents(200);
   const events = rows.map((r) => ({
     id: r.id,

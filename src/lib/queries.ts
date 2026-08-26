@@ -217,8 +217,12 @@ export async function getGlobalEvents(limit = 150) {
     .limit(limit);
 }
 
-export async function getCatProfile(catId: string) {
+export async function getCatProfile(
+  catId: string,
+  options: { includeProposalData?: boolean } = {},
+) {
   const db = getDb();
+  const includeProposalData = options.includeProposalData ?? true;
   const cat = (
     await db.select().from(cats).where(and(eq(cats.id, catId), eq(cats.active, true))).limit(1)
   )[0];
@@ -240,24 +244,26 @@ export async function getCatProfile(catId: string) {
     (e) => e.payload["cat_id"] === catId,
   );
 
-  const recentVotes = await db
-    .select({
-      score: votes.score,
-      stance: votes.stance,
-      reason: votes.reason,
-      createdAt: votes.createdAt,
-      turnNumber: turns.number,
-      content: opinions.content,
-      proposalId: opinions.proposalId,
-      proposalTitle: proposals.title,
-    })
-    .from(votes)
-    .innerJoin(turns, eq(votes.turnId, turns.id))
-    .innerJoin(opinions, eq(votes.opinionId, opinions.id))
-    .innerJoin(proposals, eq(opinions.proposalId, proposals.id))
-    .where(eq(votes.catId, catId))
-    .orderBy(desc(votes.createdAt))
-    .limit(20);
+  const recentVotes = includeProposalData
+    ? await db
+        .select({
+          score: votes.score,
+          stance: votes.stance,
+          reason: votes.reason,
+          createdAt: votes.createdAt,
+          turnNumber: turns.number,
+          content: opinions.content,
+          proposalId: opinions.proposalId,
+          proposalTitle: proposals.title,
+        })
+        .from(votes)
+        .innerJoin(turns, eq(votes.turnId, turns.id))
+        .innerJoin(opinions, eq(votes.opinionId, opinions.id))
+        .innerJoin(proposals, eq(opinions.proposalId, proposals.id))
+        .where(eq(votes.catId, catId))
+        .orderBy(desc(votes.createdAt))
+        .limit(20)
+    : [];
 
   const allEventsForCat = (types: string[]) =>
     db
@@ -276,7 +282,7 @@ export async function getCatProfile(catId: string) {
       .limit(600);
 
   const [stanceChangesRaw, factionEventsRaw] = await Promise.all([
-    allEventsForCat(["VoteChanged"]),
+    includeProposalData ? allEventsForCat(["VoteChanged"]) : Promise.resolve([]),
     allEventsForCat([
       "FactionCreated",
       "FactionJoined",

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getProposalDetail } from "@/lib/queries";
 import { processProposalCatchup } from "@/lib/catchup";
 import { estimateOpinionParams } from "@/lib/bayes";
@@ -22,6 +22,7 @@ export default async function ProposalPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await requireUser(`/proposals/${id}`);
 
   try {
     await processProposalCatchup(id);
@@ -32,7 +33,6 @@ export default async function ProposalPage({
   const d = await getProposalDetail(id);
   if (!d) notFound();
 
-  const session = await getSession();
   const isAuthorOrAdmin =
     session && (session.role === "admin" || session.userId === d.proposal.authorId);
   const canVoteHere = Boolean(session) && d.proposal.status === "OPEN";

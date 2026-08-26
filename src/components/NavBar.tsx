@@ -13,13 +13,13 @@ export async function NavBar() {
           <span className="sm:hidden">でぶ民主</span>
         </Link>
         <div className="flex flex-1 items-center gap-3 text-sm font-bold text-stone-500">
-          <Link href="/" className="hover:text-orange-600">
+          <Link href={session ? "/" : "/login?next=/"} className="hover:text-orange-600">
             議題
           </Link>
           <Link href="/cats" className="hover:text-orange-600">
             猫たち
           </Link>
-          <Link href="/timeline" className="hover:text-orange-600">
+          <Link href={session ? "/timeline" : "/login?next=/timeline"} className="hover:text-orange-600">
             タイムライン
           </Link>
           {session?.role === "admin" && (

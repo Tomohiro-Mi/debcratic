@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCatProfile } from "@/lib/queries";
+import { getSession } from "@/lib/auth";
 import { CatAvatar } from "@/components/CatAvatar";
 import { PowerBar } from "@/components/Bars";
 import { ScoreChip } from "@/components/ScoreChip";
@@ -15,7 +16,8 @@ export default async function CatPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const d = await getCatProfile(id);
+  const session = await getSession();
+  const d = await getCatProfile(id, { includeProposalData: Boolean(session) });
   if (!d) notFound();
 
   const c = d.cat;
@@ -83,46 +85,57 @@ export default async function CatPage({
         />
       </section>
 
-      <section className="card">
-        <h2 className="section-title">🗳️ 最近の投票</h2>
-        {d.recentVotes.length === 0 ? (
-          <p className="text-sm text-stone-400">まだ投票していません。</p>
-        ) : (
-          <div className="space-y-2">
-            {d.recentVotes.map((v, i) => (
-              <div key={i} className="rounded-xl border border-orange-100 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/proposals/${v.proposalId}`}
-                      className="line-clamp-1 text-xs font-bold text-orange-600 hover:underline"
-                    >
-                      {v.proposalTitle}
-                    </Link>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-stone-600">
-                      対象案: {v.content}
-                    </p>
+      {session ? (
+        <section className="card">
+          <h2 className="section-title">🗳️ 最近の投票</h2>
+          {d.recentVotes.length === 0 ? (
+            <p className="text-sm text-stone-400">まだ投票していません。</p>
+          ) : (
+            <div className="space-y-2">
+              {d.recentVotes.map((v, i) => (
+                <div key={i} className="rounded-xl border border-orange-100 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/proposals/${v.proposalId}`}
+                        className="line-clamp-1 text-xs font-bold text-orange-600 hover:underline"
+                      >
+                        {v.proposalTitle}
+                      </Link>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-stone-600">
+                        対象案: {v.content}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <ScoreChip score={v.score} />
+                      <p className="mt-0.5 text-[10px] text-stone-300">
+                        Turn {v.turnNumber}
+                      </p>
+                    </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <ScoreChip score={v.score} />
-                    <p className="mt-0.5 text-[10px] text-stone-300">
-                      Turn {v.turnNumber}
-                    </p>
-                  </div>
+                  {v.reason && (
+                    <p className="mt-1.5 text-xs text-stone-400">「{v.reason}」</p>
+                  )}
                 </div>
-                {v.reason && (
-                  <p className="mt-1.5 text-xs text-stone-400">「{v.reason}」</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="card py-8 text-center">
+          <h2 className="text-lg font-black">🗳️ 投票履歴を見るにはログインが必要です</h2>
+          <Link href={`/login?next=/cats/${id}`} className="btn btn-primary mt-4">
+            ログインして見る
+          </Link>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card">
           <h2 className="section-title">🔄 意見変更履歴</h2>
-          {d.stanceChanges.length === 0 ? (
+          {!session ? (
+            <p className="text-sm text-stone-400">ログインすると意見変更履歴を確認できます。</p>
+          ) : d.stanceChanges.length === 0 ? (
             <p className="text-sm text-stone-400">意見を変えた記録はありません。</p>
           ) : (
             <ul className="space-y-1.5 text-xs text-stone-600">

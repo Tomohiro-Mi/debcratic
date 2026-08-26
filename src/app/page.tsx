@@ -9,15 +9,17 @@ import { formatDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  try {
-    await processAllActiveProposals();
-  } catch (err) {
-    console.error("[home] catchup failed:", err);
+  const session = await getSession();
+  if (session) {
+    try {
+      await processAllActiveProposals();
+    } catch (err) {
+      console.error("[home] catchup failed:", err);
+    }
   }
 
-  const session = await getSession();
   const [proposals, society] = await Promise.all([
-    getHomeProposals(),
+    session ? getHomeProposals() : Promise.resolve([]),
     getSocietyState(),
   ]);
 
@@ -57,40 +59,52 @@ export default async function HomePage() {
           <span>🐱 就任猫 {society.catsView.length}匹</span>
           <span>⚡ 総権力 {totalPower}</span>
           <span>🏛️ 現存派閥 {society.factionsView.length}</span>
-          <span>🗳️ 進行中の議題 {active.length}</span>
+          {session && <span>🗳️ 進行中の議題 {active.length}</span>}
         </div>
       </section>
 
-      <section>
-        <div className="flex items-center justify-between">
-          <h2 className="section-title">🔥 進行中の議題</h2>
-          {session && (
-            <Link href="/proposals/new" className="btn btn-primary !px-3 !py-1.5 text-xs">
-              ＋ 新しい議題
-            </Link>
+      {session ? (
+        <>
+          <section>
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">🔥 進行中の議題</h2>
+              <Link href="/proposals/new" className="btn btn-primary !px-3 !py-1.5 text-xs">
+                ＋ 新しい議題
+              </Link>
+            </div>
+            {active.length === 0 ? (
+              <div className="card py-10 text-center text-sm text-stone-400">
+                まだ進行中の議題がありません。最初の議題を作ってみませんか？
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {active.map((p) => (
+                  <ProposalCard key={p.id} p={p} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {closed.length > 0 && (
+            <section>
+              <h2 className="section-title">🏁 終了した議題</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {closed.map((p) => (
+                  <ProposalCard key={p.id} p={p} />
+                ))}
+              </div>
+            </section>
           )}
-        </div>
-        {active.length === 0 ? (
-          <div className="card py-10 text-center text-sm text-stone-400">
-            まだ進行中の議題がありません。最初の議題を作ってみませんか？
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {active.map((p) => (
-              <ProposalCard key={p.id} p={p} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {closed.length > 0 && (
-        <section>
-          <h2 className="section-title">🏁 終了した議題</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {closed.map((p) => (
-              <ProposalCard key={p.id} p={p} />
-            ))}
-          </div>
+        </>
+      ) : (
+        <section className="card py-10 text-center">
+          <h2 className="text-lg font-black">🗳️ 議題を見るにはログインが必要です</h2>
+          <p className="mt-2 text-sm text-stone-500">
+            ログインすると、進行中・終了済みの議題を確認できます。
+          </p>
+          <Link href="/login?next=/" className="btn btn-primary mt-4 px-6">
+            ログインして議題を見る
+          </Link>
         </section>
       )}
     </div>
