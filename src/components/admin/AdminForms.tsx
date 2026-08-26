@@ -114,6 +114,7 @@ export function SettingsForm({
     changeWindow: number;
     changeThreshold: number;
     runoffTurnLimit: number;
+    voteIntervalMinutes: number;
     hasApiKey: boolean;
     apiKeySource: "db" | "env" | null;
     apiKeyHint: string | null;
@@ -133,7 +134,7 @@ export function SettingsForm({
     name: string,
     label: string,
     value: number | string,
-    opts?: { step?: string },
+    opts?: { step?: string; min?: number; max?: number },
   ) => (
     <div key={name}>
       <label className="label">{label}</label>
@@ -141,6 +142,8 @@ export function SettingsForm({
         name={name}
         type="number"
         step={opts?.step ?? "any"}
+        min={opts?.min}
+        max={opts?.max}
         defaultValue={value}
         className="input"
       />
@@ -210,7 +213,11 @@ export function SettingsForm({
           {field("changeWindow", "意見変更判定ウィンドウ(ターン)", s.changeWindow)}
           {field("changeThreshold", "意見変更ペナルティしきい値(回)", s.changeThreshold)}
           {field("runoffTurnLimit", "決選投票ターン数", s.runoffTurnLimit)}
+          {field("voteIntervalMinutes", "投票間隔（分）", s.voteIntervalMinutes, { step: "1", min: 1, max: 10080 })}
         </div>
+        <p className="mt-2 text-xs text-stone-400">
+          通常の再投票と決選投票の間隔です（1〜10080分）。初回投票は投稿直後に行われます。
+        </p>
         {state.error && <p className="mt-3 text-sm font-bold text-red-600">{state.error}</p>}
         {state.success && (
           <p className="mt-3 text-sm font-bold text-green-600">{state.success}</p>

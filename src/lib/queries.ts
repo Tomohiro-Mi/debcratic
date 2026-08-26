@@ -197,6 +197,7 @@ export async function getProposalDetail(pid: string) {
     events: eventRows,
     adoptedOpinion,
     runoffTurnLimitRow: settings.runoffTurnLimit,
+    voteIntervalMinutes: settings.voteIntervalMinutes,
   };
 }
 

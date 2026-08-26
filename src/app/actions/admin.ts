@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, isNull, max } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, max } from "drizzle-orm";
 import {
   cats,
   events,
@@ -18,8 +18,9 @@ import { getDb } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { slugify, uuidSchema } from "@/lib/validation";
 import { encryptSecret } from "@/lib/crypto";
-import { getEffectiveSettings } from "@/lib/settings";
+import { getEffectiveSettings, VOTE_INTERVAL_SETTINGS_ID } from "@/lib/settings";
 import { testLlmConnection } from "@/lib/llm";
+import { DEFAULTS } from "@/lib/constants";
 
 export interface AdminActionState {
   error?: string;
@@ -216,10 +217,58 @@ export async function saveSettingsAction(
     values.llmApiKeyEnc = encryptSecret(rawKey);
   }
 
-  await getDb()
-    .insert(systemSettings)
-    .values({ id: 1, ...values })
-    .onConflictDoUpdate({ target: systemSettings.id, set: values });
+  const db = getDb();
+  const intervalMinutes = numOrNull("voteIntervalMinutes", 1, 10080) ?? DEFAULTS.voteIntervalMinutes;
+  const intervalMs = intervalMinutes * 60_000;
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(systemSettings)
+      .values({ id: 1, ...values })
+      .onConflictDoUpdate({ target: systemSettings.id, set: values });
+    await tx
+      .insert(systemSettings)
+      .values({
+        id: VOTE_INTERVAL_SETTINGS_ID,
+        runoffTurnLimit: intervalMinutes,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: systemSettings.id,
+        set: { runoffTurnLimit: intervalMinutes, updatedAt: new Date() },
+      });
+
+    // Apply a changed interval to currently open proposals too. Their next
+    // schedule is based on the last vote, so changing the setting takes effect
+    // without waiting for the old schedule to fire once more.
+    const activeProposalRows = await tx
+      .select({ id: proposals.id })
+      .from(proposals)
+      .where(eq(proposals.status, "OPEN"));
+    const activeProposalIds = activeProposalRows.map((p) => p.id);
+    if (activeProposalIds.length > 0) {
+      const activeOpinions = await tx
+        .select({
+          id: opinions.id,
+          createdAt: opinions.createdAt,
+          lastVotedAt: opinions.lastVotedAt,
+        })
+        .from(opinions)
+        .where(
+          and(
+            eq(opinions.eligible, true),
+            isNull(opinions.deletedAt),
+            inArray(opinions.proposalId, activeProposalIds),
+          ),
+        );
+      for (const opinion of activeOpinions) {
+        const base = opinion.lastVotedAt ?? opinion.createdAt;
+        await tx
+          .update(opinions)
+          .set({ nextVoteDue: new Date(base.getTime() + intervalMs) })
+          .where(eq(opinions.id, opinion.id));
+      }
+    }
+  });
 
   revalidatePath("/admin");
   if (wantsClear) return { success: "APIキーを削除しました" };

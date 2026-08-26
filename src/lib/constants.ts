@@ -20,6 +20,7 @@ export const DEFAULTS = {
   changeWindow: 5,
   changeThreshold: 2,
   runoffTurnLimit: 5,
+  voteIntervalMinutes: 60,
 } as const;
 
 export const OPINION_RATE_LIMIT_MS = 10 * 60 * 1000;

@@ -4,27 +4,19 @@ import { nextVoteDue, runoffVoteDue } from "@/lib/scheduler";
 const H = 3600_000;
 
 describe("nextVoteDue", () => {
-  it("votes hourly within the first 24h", () => {
+  it("uses the configured interval", () => {
     const posted = new Date("2026-01-01T00:00:00Z");
     const from = new Date(posted.getTime() + 5 * H);
-    const due = nextVoteDue(posted, from);
-    expect(due.getTime() - from.getTime()).toBe(H);
+    expect(nextVoteDue(posted, from, 15).getTime() - from.getTime()).toBe(15 * 60_000);
+    expect(nextVoteDue(posted, from).getTime() - from.getTime()).toBe(H);
   });
 
-  it("switches to twice daily between day 1 and day 7", () => {
+  it("keeps the configured interval for older proposals", () => {
     const posted = new Date("2026-01-01T00:00:00Z");
     const from = new Date(posted.getTime() + 24 * H);
-    const due = nextVoteDue(posted, from);
-    expect(due.getTime() - from.getTime()).toBe(12 * H);
-
     const from6 = new Date(posted.getTime() + 6.9 * 24 * H);
-    expect(nextVoteDue(posted, from6).getTime() - from6.getTime()).toBe(12 * H);
-  });
-
-  it("falls back to weekly after day 7", () => {
-    const posted = new Date("2026-01-01T00:00:00Z");
-    const from = new Date(posted.getTime() + 7 * 24 * H + 1000);
-    expect(nextVoteDue(posted, from).getTime() - from.getTime()).toBe(7 * 24 * H);
+    expect(nextVoteDue(posted, from, 90).getTime() - from.getTime()).toBe(90 * 60_000);
+    expect(nextVoteDue(posted, from6, 90).getTime() - from6.getTime()).toBe(90 * 60_000);
   });
 
   it("starts fresh schedules for late opinions", () => {
@@ -35,8 +27,9 @@ describe("nextVoteDue", () => {
 });
 
 describe("runoffVoteDue", () => {
-  it("is hourly", () => {
+  it("uses the same configured interval", () => {
     const now = new Date("2026-01-01T12:00:00Z");
     expect(runoffVoteDue(now).getTime() - now.getTime()).toBe(H);
+    expect(runoffVoteDue(now, 20).getTime() - now.getTime()).toBe(20 * 60_000);
   });
 });
