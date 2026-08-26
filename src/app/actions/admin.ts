@@ -150,10 +150,6 @@ export async function upsertCatAction(
       } else {
         const existing = (await tx.select({ id: cats.id }).from(cats).where(eq(cats.id, id)).limit(1))[0];
         if (!existing) throw new Error("cat not found");
-        await tx
-          .update(cats)
-          .set({ name, icon, gender, power })
-          .where(eq(cats.id, id));
       }
 
     const currentMembership = (
@@ -251,6 +247,10 @@ export async function upsertCatAction(
       await tx
         .update(cats)
         .set({
+          name,
+          icon,
+          gender,
+          power,
           factionId: desiredFaction?.id ?? null,
           leaderId: desiredFaction?.leaderId ?? null,
         })

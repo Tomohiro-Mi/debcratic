@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import {
   saveSettingsAction,
   testLlmConnectionAction,
@@ -34,14 +34,29 @@ export function CatForm({
   const c = editingCat ?? null;
   const [name, setName] = useState(c?.name ?? "");
   const [power, setPower] = useState(c?.power ?? 5);
+  const [gender, setGender] = useState<"オス" | "メス" | "セン">(c?.gender ?? "セン");
   const [isLeader, setIsLeader] = useState(c?.role === "leader");
   const [factionId, setFactionId] = useState(c?.role === "follower" ? c.factionId ?? "" : "");
+  const formRef = useRef<HTMLFormElement>(null);
   const canLead = power >= LEADER_POWER_THRESHOLD;
   const canFollow = power <= FOLLOWER_MAX_POWER;
 
   return (
-    <form action={formAction} encType="multipart/form-data" className="card">
-      <p className="section-title">{c ? `🐱 ${c.name} を編集` : "➕ 猫を追加"}</p>
+    <form ref={formRef} action={formAction} encType="multipart/form-data" className="card">
+      <div className="flex items-center justify-between gap-2">
+        <p className="section-title">{c ? `🐱 ${c.name} を編集` : "➕ 猫を追加"}</p>
+        {c && (
+          <button
+            type="button"
+            aria-label="編集を閉じる"
+            title="編集を閉じる"
+            onClick={() => formRef.current?.closest("details")?.removeAttribute("open")}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-xl leading-none text-stone-400 hover:bg-orange-50 hover:text-orange-600"
+          >
+            ×
+          </button>
+        )}
+      </div>
       {c && <input type="hidden" name="id" value={c.id} />}
       {c && <input type="hidden" name="currentIcon" value={c.currentIcon} />}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -91,7 +106,8 @@ export function CatForm({
           <label className="label">性別</label>
           <select
             name="gender"
-            defaultValue={c?.gender ?? "セン"}
+            value={gender}
+            onChange={(event) => setGender(event.target.value as "オス" | "メス" | "セン")}
             className="input"
           >
             <option value="オス">オス</option>

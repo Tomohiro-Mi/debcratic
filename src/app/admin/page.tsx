@@ -99,6 +99,7 @@ export default async function AdminPage() {
                         <summary className="btn btn-ghost !px-2 !py-1 text-[10px]">編集</summary>
                         <div className="absolute right-4 z-10 mt-2 w-[min(92vw,640px)]">
                           <CatForm
+                            key={`${c.id}:${c.name}:${c.icon}:${c.gender}:${c.power}:${c.factionId ?? ""}:${c.leaderId ?? ""}`}
                             factions={factionOptions}
                             editingCat={{
                               id: c.id,
@@ -109,11 +110,7 @@ export default async function AdminPage() {
                               gender: c.gender,
                               power: c.power,
                               factionId: c.factionId,
-                              role: c.factionId
-                                ? c.id === factionRows.find((f) => f.id === c.factionId)?.leaderId
-                                  ? "leader"
-                                  : "follower"
-                                : null,
+                              role: c.factionId ? (c.leaderId === c.id ? "leader" : "follower") : null,
                             }}
                           />
                         </div>
