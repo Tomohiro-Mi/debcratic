@@ -11,7 +11,7 @@ export const STANCE_AGAINST_MAX = -2;
 export const SCORE_MIN = -10;
 export const SCORE_MAX = 10;
 
-export const PROMPT_VERSION = "vote-v2-balanced";
+export const PROMPT_VERSION = "vote-v3-polarized";
 
 export const COMMENT_SUFFIXES = ["ニャ", "ピィ", "のね", "普通"] as const;
 export type CommentSuffix = (typeof COMMENT_SUFFIXES)[number];

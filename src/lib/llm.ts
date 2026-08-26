@@ -45,6 +45,97 @@ export interface LLMVoteResult {
   mock: boolean;
 }
 
+export interface CatDisposition {
+  assertiveness: number;
+  riskTolerance: number;
+  contrarianism: number;
+}
+
+const HIGH_RISK_OPINION_PATTERN =
+  /(地獄|あの世|冥界|死者の国|戦場|殺人|殺す|自殺|毒|爆破|爆弾|無差別|奴隷|拷問|違法)/u;
+const STRONG_FOR_PATTERN = /(絶対|必ず|最高|画期的|大賛成|推進|全面的|無条件)/u;
+const STRONG_AGAINST_PATTERN = /(絶対に反対|断固反対|最悪|危険|中止|禁止|廃止|許せない)/u;
+const RISK_PARAMETER_PATTERN = /(安全|現実|実現|合法|倫理|健康|費用|コスト|安心|リスク|危険|公共)/u;
+
+export function getCatDisposition(catId: string): CatDisposition {
+  const rng = new SeededRandom(`cat-disposition:${catId}`);
+  return {
+    assertiveness: rng.float(0.55, 0.95),
+    riskTolerance: rng.float(0.15, 0.9),
+    contrarianism: rng.float(-0.65, 0.65),
+  };
+}
+
+function opinionIntensity(content: string): number {
+  let intensity = 0;
+  if (HIGH_RISK_OPINION_PATTERN.test(content)) intensity = 1;
+  if (STRONG_FOR_PATTERN.test(content) || STRONG_AGAINST_PATTERN.test(content)) {
+    intensity = Math.max(intensity, 0.75);
+  }
+  return intensity;
+}
+
+function riskReaction(input: LLMVoteInput, cat: LLMCatContext, disposition: CatDisposition): number {
+  if (!HIGH_RISK_OPINION_PATTERN.test(input.opinionContent)) return 0;
+
+  const riskParams = Object.entries(cat.topicParams).filter(([name]) =>
+    RISK_PARAMETER_PATTERN.test(name),
+  );
+  const safetyAffinity =
+    riskParams.length > 0
+      ? riskParams.reduce((sum, [, value]) => sum + (value - 1) / 9, 0) / riskParams.length
+      : 0.5;
+
+  // Strong safety-oriented cats should reject clearly dangerous proposals,
+  // while risk-tolerant cats remain capable of taking the opposite position.
+  return -4.5 - safetyAffinity * 4 + disposition.riskTolerance * 4.5;
+}
+
+function calibrateVoteScore(
+  score: number,
+  input: LLMVoteInput,
+  cat: LLMCatContext,
+): number {
+  const disposition = getCatDisposition(cat.id);
+  const intensity = opinionIntensity(input.opinionContent);
+  const explicitDirection = STRONG_AGAINST_PATTERN.test(input.opinionContent)
+    ? -1
+    : STRONG_FOR_PATTERN.test(input.opinionContent)
+      ? 1
+      : 0;
+  let adjusted = score;
+
+  if (score !== 0 && !(explicitDirection !== 0 && Math.abs(score) < 1)) {
+    const magnitudeBoost = 1.12 + disposition.assertiveness * 0.58;
+    adjusted = score * magnitudeBoost;
+    if (Math.abs(score) >= 2 && intensity > 0) {
+      adjusted += Math.sign(score) * intensity * disposition.assertiveness;
+    }
+  } else if (intensity > 0 && explicitDirection !== 0) {
+    adjusted = explicitDirection * Math.round(3 + disposition.assertiveness * 3);
+  }
+
+  const riskPrior = riskReaction(input, cat, disposition);
+  if (riskPrior <= -6) adjusted = Math.min(adjusted, riskPrior);
+  if (riskPrior >= 3) adjusted = Math.max(adjusted, riskPrior);
+
+  const rounded = Math.round(adjusted);
+  return rounded === 0
+    ? 0
+    : Math.max(SCORE_MIN, Math.min(SCORE_MAX, rounded));
+}
+
+export function alignReasonTone(reason: string, score: number): string {
+  const clean = reason.trim();
+  if (score >= 8 && !/(断固|絶対|大賛成|強く賛成)/u.test(clean)) {
+    return `断固賛成。${clean || "絶対に実現してほしい。"}`;
+  }
+  if (score <= -8 && !/(断固|絶対|到底|受け入れられない)/u.test(clean)) {
+    return `断固反対。${clean || "絶対に受け入れられない。"}`;
+  }
+  return clean;
+}
+
 const voteSchema = z.object({
   score: z.number().transform((v) => Math.max(SCORE_MIN, Math.min(SCORE_MAX, Math.round(v)))),
   reason: z.string().max(500).catch(""),
@@ -75,9 +166,14 @@ function buildSystemPrompt(): string {
 - 過去に強い立場を示していた場合、急激な変更は避けがたい
 - reason は猫らしい一人称の発言として日本語で40字程度書き、その猫ごとに指定された語尾で終える
 - 各猫は独立して評価する。全員が同じ賛否になるのは、全員の価値観・派閥・履歴から同じ結論になる場合だけにする
+- 中立(-1〜+1)は本当に判断材料が足りない場合だけにし、無難さを理由に選ばない
+- 明確な利点や問題がある場合は、少なくとも±6以上のはっきりした立場を取る
+- 強い提案・挑発的な提案・危険な提案では、猫ごとの価値観と危険許容度に応じて±8〜±10も積極的に使う
+- 猫ごとの「立場の鋭さ」「危険許容度」「反発傾向」を必ず反映し、同じ入力でも全員を同じ温度感にしない
 - 意見に自動的に賛成してはいけない。実現可能性、安全性、費用、目的への適合性、意図しない悪影響、前提の妥当性を必ず検討する
 - 極端・非現実的・危険な提案は、理由を明示して大きく減点する。短い意見でも、書かれている内容を額面通りに評価する
-- score は、強い賛成(+8〜+10)、賛成(+3〜+7)、迷い(-1〜+1)、反対(-3〜-7)、到底受け入れられない(-8〜-10)の基準で校正する
+- score は、強い賛成(+8〜+10)、賛成(+3〜+7)、迷い(-1〜+1)、反対(-3〜-7)、到底受け入れられない(-8〜-10)の基準で校正する。明確な賛否なのに0付近へ逃げてはいけない
+- scoreとreasonの温度感を一致させる。±8以上なら「断固」「絶対に受け入れられない」など、強い立場が伝わる発言にする
 - factors には判断要因を {label, delta} 形式で列挙する(label例: 価値観との一致, 派閥からの影響, 過去の立場)
 - confidence は0〜1の確信度
 
@@ -88,6 +184,7 @@ function buildSystemPrompt(): string {
 function buildUserPrompt(input: LLMVoteInput): string {
   const catBlocks = input.cats
     .map((c) => {
+      const disposition = getCatDisposition(c.id);
       const hist = c.history
         .slice(-3)
         .map((h) => `    Turn ${h.turn}: ${h.score > 0 ? "+" : ""}${h.score} (${h.reason})`)
@@ -98,6 +195,9 @@ function buildUserPrompt(input: LLMVoteInput): string {
       return `  <cat id="${c.id}">
     名前: ${c.name}
     権力: ${c.power}
+    立場の鋭さ: ${Math.round(disposition.assertiveness * 100)}%
+    危険許容度: ${Math.round(disposition.riskTolerance * 100)}%
+    反応傾向: ${disposition.contrarianism >= 0 ? "賛成側へ傾きやすい" : "反対側へ傾きやすい"}
     コメント語尾: ${c.commentSuffix}
     所属派閥: ${c.factionName ?? "無所属"}
     リーダー: ${c.leaderName ?? "なし"}
@@ -312,7 +412,14 @@ async function callOpenRouter(
   for (const cat of input.cats) {
     const v = parsed.votes[cat.id] ?? parsed.votes[cat.name];
     votes[cat.id] = v
-      ? { ...v, reason: applyCommentSuffix(v.reason, cat.commentSuffix) }
+      ? (() => {
+          const score = calibrateVoteScore(v.score, input, cat);
+          return {
+            ...v,
+            score,
+            reason: applyCommentSuffix(alignReasonTone(v.reason, score), cat.commentSuffix),
+          };
+        })()
       : { score: 0, reason: "", confidence: 0.5, factors: [] };
   }
   return votes;
@@ -324,7 +431,7 @@ export function mockVotes(input: LLMVoteInput): Record<string, VoteOutput> {
     const rng = new SeededRandom(`${input.seed}:${cat.id}`);
     const opinionVec: Record<string, number> = {};
     for (const [i, p] of input.parameterNames.entries()) {
-      opinionVec[p] = (new SeededRandom(`${input.opinionId}:${p}:${i}`).int(2, 9));
+      opinionVec[p] = new SeededRandom(`${input.opinionId}:${p}:${i}`).int(1, 10);
     }
     const vals = input.parameterNames
       .map((p) => cat.topicParams[p] ?? 5)
@@ -346,17 +453,28 @@ export function mockVotes(input: LLMVoteInput): Record<string, VoteOutput> {
     const prevScore = cat.history.length > 0 ? cat.history[cat.history.length - 1].score : 0;
     const inertia = prevScore * 0.35;
 
+    const disposition = getCatDisposition(cat.id);
     const opinionText = input.opinionContent;
-    const safetyPenalty = /(地獄|あの世|冥界|死者の国|戦場|殺人|自殺|毒|爆破|不可能|無理)/u.test(opinionText)
-      ? -3.5
-      : 0;
-    const textSignal = /(賛成|最高|便利|安全|節約|改善|快適|推進)/u.test(opinionText)
-      ? 1.5
-      : /(反対|危険|最悪|中止|禁止|心配)/u.test(opinionText)
-        ? -1.5
-        : 0;
-    const raw = alignment * 8 + textSignal + safetyPenalty + factionPull + inertia + rng.float(-3.5, 3.5);
-    const score = Math.max(SCORE_MIN, Math.min(SCORE_MAX, Math.round(raw)));
+    const intensity = opinionIntensity(opinionText);
+    const safetyPenalty = riskReaction(input, cat, disposition);
+    const textSignal = STRONG_AGAINST_PATTERN.test(opinionText)
+      ? -3
+      : STRONG_FOR_PATTERN.test(opinionText)
+        ? 3
+        : /(賛成|最高|便利|安全|節約|改善|快適|推進)/u.test(opinionText)
+          ? 1.5
+          : /(反対|危険|最悪|中止|禁止|心配)/u.test(opinionText)
+            ? -1.5
+            : 0;
+    const raw =
+      alignment * (9 + disposition.assertiveness * 5) +
+      textSignal +
+      safetyPenalty +
+      factionPull +
+      inertia +
+      disposition.contrarianism * (1.5 + intensity * 2.5) +
+      rng.float(-2.5, 2.5);
+    const score = calibrateVoteScore(raw, input, cat);
     const stanceLabel = score >= 2 ? "for" : score <= -2 ? "against" : "neutral";
     const topParam = input.parameterNames[0] ?? "全体";
 
@@ -377,19 +495,34 @@ export function mockVotes(input: LLMVoteInput): Record<string, VoteOutput> {
         `${cat.name}としては賛成できない。`,
       ],
     };
+    const strongReasons: Record<string, string[]> = {
+      for: [
+        `これは断固賛成。${cat.name}は絶対に推したい。`,
+        `${topParam}のためにも、絶対に実現してほしい。`,
+      ],
+      against: [
+        `これは断固反対。${cat.name}は絶対に受け入れられない。`,
+        `危険が大きすぎる。絶対にやめるべきだ。`,
+      ],
+    };
+    const reasonPool = Math.abs(score) >= 8 ? strongReasons[stanceLabel] ?? reasons[stanceLabel] : reasons[stanceLabel];
     const factorBase = Math.round(Math.abs(score) / 3);
+    const factors = [
+      { label: "価値観との一致", delta: Math.sign(score) * factorBase },
+      {
+        label: "派閥からの影響",
+        delta: cat.leaderName ? Math.sign(factionPull || 1) * Math.min(2, Math.abs(Math.round(factionPull))) : 0,
+      },
+      { label: "過去の立場", delta: Math.sign(inertia) * (prevScore !== 0 ? 1 : 0) },
+      ...(safetyPenalty !== 0
+        ? [{ label: "危険性への反応", delta: Math.max(-3, Math.min(3, Math.round(safetyPenalty / 2))) }]
+        : []),
+    ].filter((f) => f.delta !== 0 || f.label === "価値観との一致");
     votes[cat.id] = {
       score,
-      reason: applyCommentSuffix(rng.pick(reasons[stanceLabel]), cat.commentSuffix),
+      reason: applyCommentSuffix(rng.pick(reasonPool), cat.commentSuffix),
       confidence: Number(rng.float(0.55, 0.95).toFixed(2)),
-      factors: [
-        { label: "価値観との一致", delta: Math.sign(score) * factorBase },
-        {
-          label: "派閥からの影響",
-          delta: cat.leaderName ? Math.sign(factionPull || 1) * Math.min(2, Math.abs(Math.round(factionPull))) : 0,
-        },
-        { label: "過去の立場", delta: Math.sign(inertia) * (prevScore !== 0 ? 1 : 0) },
-      ].filter((f) => f.delta !== 0 || f.label === "価値観との一致"),
+      factors,
     };
   }
   return votes;

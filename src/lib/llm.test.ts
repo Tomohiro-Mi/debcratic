@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyCommentSuffix, mockVotes, type LLMVoteInput } from "@/lib/llm";
+import {
+  alignReasonTone,
+  applyCommentSuffix,
+  mockVotes,
+  type LLMVoteInput,
+} from "@/lib/llm";
 
 const input: LLMVoteInput = {
   opinionId: "opinion-test",
@@ -71,7 +76,30 @@ describe("LLM vote calibration", () => {
       .toBeGreaterThan(1);
   });
 
+  it("uses decisive scores and comments for a clearly dangerous opinion", () => {
+    const votes = mockVotes(input);
+    const scores = Object.values(votes).map((vote) => vote.score);
+
+    expect(scores.some((score) => score <= -8)).toBe(true);
+    expect(scores.some((score) => score >= 8)).toBe(true);
+    expect(Object.values(votes).some((vote) => vote.reason.includes("断固"))).toBe(true);
+  });
+
+  it("does not leave an explicitly strong opinion at a neutral score", () => {
+    const votes = mockVotes({
+      ...input,
+      opinionContent: "絶対に反対。危険なので中止すべき。",
+    });
+
+    expect(Object.values(votes).every((vote) => vote.score <= -2 || vote.score >= 2)).toBe(true);
+  });
+
   it("does not duplicate a suffix already supplied by the model", () => {
     expect(applyCommentSuffix("了解ニャ。", "ニャ")).toBe("了解ニャ。");
+  });
+
+  it("makes the displayed reason match an extreme score", () => {
+    expect(alignReasonTone("ちょっと良いと思います。", 9)).toContain("断固賛成");
+    expect(alignReasonTone("少し心配です。", -9)).toContain("断固反対");
   });
 });
