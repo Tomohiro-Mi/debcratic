@@ -91,6 +91,7 @@ describe("LLM vote calibration", () => {
             name: cat.name,
             commentSuffix: cat.commentSuffix,
             factionName: cat.factionName,
+            topicParams: cat.topicParams,
             score: -8,
             confidence: 0.9,
             factors: [{ label: "安全性", delta: -4 }],
@@ -105,6 +106,7 @@ describe("LLM vote calibration", () => {
       const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
       expect(request.messages[1].content).toContain("卒業旅行の行き先");
       expect(request.messages[1].content).toContain("行き先は地獄にする");
+      expect(request.messages[1].content).toContain("安全性=9");
       expect(request.messages[0].content).toContain("定型句");
     } finally {
       vi.unstubAllGlobals();
@@ -139,6 +141,7 @@ describe("LLM vote calibration", () => {
             name: cat.name,
             commentSuffix: cat.commentSuffix,
             factionName: cat.factionName,
+            topicParams: cat.topicParams,
             score: -8,
             confidence: 0.9,
             factors: [{ label: "安全性", delta: -4 }],
@@ -182,6 +185,14 @@ describe("LLM vote calibration", () => {
     expect(scores.some((score) => score < 0)).toBe(true);
     expect(new Set(scores.map((score) => (score >= 2 ? "for" : score <= -2 ? "against" : "neutral"))).size)
       .toBeGreaterThan(1);
+  });
+
+  it("reflects each cat's topic-specific preference in fallback comments", () => {
+    const votes = mockVotes(input);
+
+    expect(votes["cat-a"].reason).toContain("アオは「安全性」を重視する");
+    expect(votes["cat-b"].reason).toContain("ミドリは「安全性」を重視しない");
+    expect(votes["cat-a"].reason).not.toBe(votes["cat-b"].reason);
   });
 
   it("uses decisive scores and comments for a clearly dangerous opinion", () => {
@@ -249,6 +260,7 @@ describe("LLM vote calibration", () => {
           name: cat.name,
           commentSuffix: cat.commentSuffix,
           factionName: cat.factionName,
+          topicParams: cat.topicParams,
           score: index % 2 === 0 ? 9 : -9,
           confidence: 0.9,
           factors: [],

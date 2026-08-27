@@ -256,6 +256,9 @@ export async function executeTurn(opts: {
         });
 
         const parameterNames = paramRows.map((x) => x.name);
+        // postOpinionAction seeds both fields with the semantic LLM result.
+        // Therefore the first vote uses those initial values; subsequent turns
+        // use the posterior updated at the end of this transaction.
         const opinionParameters: OpinionParameterState =
           Object.keys(op.parameterPosterior ?? {}).length > 0
             ? op.parameterPosterior
@@ -281,6 +284,7 @@ export async function executeTurn(opts: {
             name: cat.name,
             commentSuffix: cat.commentSuffix,
             factionName: cat.factionName,
+            topicParams: cat.topicParams,
             score: result[cat.id]?.score ?? 0,
             confidence: result[cat.id]?.confidence ?? 0.5,
             factors: result[cat.id]?.factors ?? [],

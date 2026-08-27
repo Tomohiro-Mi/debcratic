@@ -74,6 +74,7 @@ export interface CommentGenerationInput {
     name: string;
     commentSuffix: CommentSuffix;
     factionName: string | null;
+    topicParams: Record<string, number>;
     score: number;
     confidence: number;
     factors: { label: string; delta: number }[];
@@ -352,6 +353,9 @@ function fallbackComment(
 ): string {
   const opinionReference = compactReference(input.opinionContent, 36);
   const proposalReference = compactReference(input.proposalTitle, 24);
+  const strongestPreference = Object.entries(cat.topicParams).sort(
+    ([, a], [, b]) => Math.abs(b - 5.5) - Math.abs(a - 5.5),
+  )[0];
   const strongestFactor = [...cat.factors].sort(
     (a, b) => Math.abs(b.delta) - Math.abs(a.delta),
   )[0];
@@ -362,7 +366,10 @@ function fallbackComment(
       : cat.score <= -2
         ? "議題の目的に合わない"
         : "議題の目的への影響が不明";
-  const reference = `「${opinionReference}」は「${proposalReference}」で${factorReason}`;
+  const preferenceReason = strongestPreference
+    ? `「${strongestPreference[0]}」を${strongestPreference[1] >= 6.5 ? "重視する" : strongestPreference[1] <= 4.5 ? "重視しない" : "標準的に重視する"}`
+    : "議題の目的との相性";
+  const reference = `「${opinionReference}」は「${proposalReference}」で${factorReason}。${cat.name}は${preferenceReason}`;
   const strongFor = [
     `${reference}ため、${cat.name}は断固賛成する。`,
     `${reference}ため、この意見に断固賛成する。`,
@@ -430,9 +437,10 @@ export function mockComments(input: CommentGenerationInput): CommentGenerationRe
 function buildCommentSystemPrompt(): string {
   return `あなたは、議題とユーザーの意見を読んだうえで、各猫がその意見に投票した理由を考えて書くコメント生成器です。
 scoreとfactorsは投票エンジンが決定済みの事実であり、変更・再計算してはいけません。ただし、コメントの理由は議題・意見・各猫の判断要因から具体的に考えてください。
-各コメントは50〜100字程度の自然な日本語で、単なる「賛成です」「反対です」「良い案です」「この意見には反対票を投じる」のような定型句だけの出力や、議題だけの言い換えにしないでください。必ず「具体的な対象・判断要因」と「そのため賛成/反対/投票しない」という理由と結論の両方を書き、文末まで断定調にしてください。
+各コメントは50〜100字程度の自然な日本語で、単なる「賛成です」「反対です」「良い案です」「この意見には反対票を投じる」のような定型句だけの出力や、「価値観との一致が高まるため」のような抽象説明だけの出力にしないでください。必ず「意見の具体的な対象」「その猫の議題固有の価値観」「判断要因」と「そのため賛成/反対/投票しない」という理由と結論の両方を書き、文末まで断定調にしてください。
 <user_opinion>に書かれた提案内容から、対象・行動・理由など具体的な要素を少なくとも1つ取り上げ、なぜこの猫がそのスコアになったのかを説明してください。意見に具体性がない場合は、議題の説明と判断要因から妥当な理由を考えてください。
-同じ文章を複数の猫に使い回さず、所属派閥・指定語尾・判断要因が各猫のコメントに反映されるようにしてください。
+議題固有の価値観は、値が高い軸ほどその猫が強く好む・重視するものとして自然な言葉に置き換えてください。意見が「温泉に行く」の場合、温泉に関する値が高い猫なら「クロは温泉が好きだ」といった具体的な発言にしてください。値が低い場合は「温泉を好まない」「温泉より別の条件を重視する」と表現してください。同じ文章を複数の猫に使い回さず、所属派閥・指定語尾・判断要因が各猫のコメントに反映されるようにしてください。
+コメントは評論家の説明ではなく、猫本人が話している短い発言にしてください。例えば「クロは温泉が好きニャ。だからこの意見に賛成だニャ。」のように、猫の名前、意見の具体的な対象、好き嫌いまたは重視する軸、投票結論を自然につなげてください。
 scoreが+2以上なら「私はこの意見に賛成だ」、-2以下なら「私はこの意見に反対だ」と、理由を述べた最後に明確に言い切ってください。scoreが-1〜+1の場合も、具体的な判断理由を述べたうえで「私はこの意見に賛成票も反対票も投じない」と明示してください。どの場合も「〜と思う」「〜したい」「かもしれない」「慎重に決めたい」「保留したい」などの曖昧な表現は禁止です。+8以上は断固たる賛成、-8以下は断固たる反対として書いてください。
 意見に書かれていない事実・数字・結果を創作してはいけません。
 各猫の指定された語尾で終えてください。
@@ -445,6 +453,7 @@ function buildCommentUserPrompt(input: CommentGenerationInput): string {
     名前: ${cat.name}
     所属派閥: ${cat.factionName ?? "無所属"}
     指定語尾: ${cat.commentSuffix}
+    議題固有の価値観（各評価軸をどれだけ重視するか、1〜10）: ${Object.entries(cat.topicParams).map(([name, value]) => `${name}=${value}`).join(", ") || "なし"}
     確定スコア: ${cat.score}
     判断要因: ${cat.factors.map((factor) => `${factor.label}(${factor.delta >= 0 ? "+" : ""}${factor.delta})`).join(", ")}
   </cat>`).join("\n");

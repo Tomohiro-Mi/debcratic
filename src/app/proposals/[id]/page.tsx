@@ -11,7 +11,11 @@ import { OpinionCard } from "@/components/OpinionCard";
 import { TimelineList } from "@/components/TimelineList";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { deleteProposalAction, startRunoffAction } from "@/app/actions/proposals";
+import {
+  deleteProposalAction,
+  resetProposalSimulationAction,
+  startRunoffAction,
+} from "@/app/actions/proposals";
 import type { VoteView } from "@/components/VoteCard";
 import { CatAvatar } from "@/components/CatAvatar";
 
@@ -114,15 +118,26 @@ export default async function ProposalPage({
               <span>💬 意見 {d.opinions.length}件</span>
             </div>
             {isAuthorOrAdmin && (
-              <form action={deleteProposalAction} className="mt-4 border-t border-orange-100 pt-3">
-                <input type="hidden" name="proposalId" value={d.proposal.id} />
-                <ConfirmSubmitButton
-                  message="この議題と投稿済みの意見を削除しますか？"
-                  className="btn btn-danger !px-3 !py-1.5 text-xs"
-                >
-                  議題を削除
-                </ConfirmSubmitButton>
-              </form>
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-orange-100 pt-3">
+                <form action={resetProposalSimulationAction}>
+                  <input type="hidden" name="proposalId" value={d.proposal.id} />
+                  <ConfirmSubmitButton
+                    message="議題・意見・評価軸は残したまま、投票履歴・Point・推定パラメータの更新・権力と派閥の進行状態を初期化します。実行しますか？"
+                    className="btn btn-ghost !px-3 !py-1.5 text-xs"
+                  >
+                    シミュレーションをリセット
+                  </ConfirmSubmitButton>
+                </form>
+                <form action={deleteProposalAction}>
+                  <input type="hidden" name="proposalId" value={d.proposal.id} />
+                  <ConfirmSubmitButton
+                    message="この議題と投稿済みの意見を削除しますか？"
+                    className="btn btn-danger !px-3 !py-1.5 text-xs"
+                  >
+                    議題を削除
+                  </ConfirmSubmitButton>
+                </form>
+              </div>
             )}
             {d.params.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   cats,
   events,
@@ -14,10 +14,13 @@ import {
   users,
   proposalParameters,
   proposalCatValues,
+  turns,
+  votes,
 } from "@/db/schema";
 import { getDb } from "@/db";
 import { getSession, requireUser } from "@/lib/auth";
 import { inferOpinionParameters } from "@/lib/llm";
+import { createNeutralOpinionParameters } from "@/lib/bayes";
 import { executeTurn } from "@/lib/rules/turn";
 import { beginRunoff } from "@/lib/catchup";
 import {
@@ -26,7 +29,11 @@ import {
   OPINION_DAILY_WINDOW_MS,
 } from "@/lib/constants";
 import { opinionContentSchema, parseDateTimeLocal, uuidSchema } from "@/lib/validation";
-import { createInitialProposalSimulationState, serializeProposalSimulationState } from "@/lib/proposal-state";
+import {
+  createInitialProposalSimulationState,
+  parseProposalSimulationState,
+  serializeProposalSimulationState,
+} from "@/lib/proposal-state";
 import { getEffectiveSettings } from "@/lib/settings";
 
 export interface OpinionActionState {
@@ -384,4 +391,122 @@ export async function deleteProposalAction(formData: FormData): Promise<void> {
   revalidatePath(`/proposals/${proposalId}`);
   revalidatePath("/admin");
   redirect("/");
+}
+
+export async function resetProposalSimulationAction(formData: FormData): Promise<void> {
+  const proposalId = String(formData.get("proposalId") ?? "");
+  if (!uuidSchema.safeParse(proposalId).success) return;
+
+  const session = await getSession();
+  if (!session) return;
+
+  const db = getDb();
+  const proposal = (
+    await db.select().from(proposals).where(eq(proposals.id, proposalId)).limit(1)
+  )[0];
+  if (
+    !proposal ||
+    proposal.deletedAt ||
+    (session.role !== "admin" && proposal.authorId !== session.userId)
+  ) {
+    return;
+  }
+
+  // Keep the page visibly reset until the next scheduled interval instead of
+  // immediately running another catch-up turn during the redirect/reload.
+  const settings = await getEffectiveSettings();
+  const nextVoteDue = new Date(
+    Date.now() + settings.voteIntervals.within24h * 60_000,
+  );
+
+  await db.transaction(async (tx) => {
+    const [initialEvent] = await tx
+      .select({ payload: events.payload })
+      .from(events)
+      .where(
+        and(
+          eq(events.proposalId, proposalId),
+          eq(events.type, "SimulationInitialized"),
+        ),
+      )
+      .orderBy(asc(events.id))
+      .limit(1);
+
+    const [catRows, factionRows, parameterRows, opinionRows, turnRows] = await Promise.all([
+      tx.select().from(cats).where(eq(cats.active, true)),
+      tx.select().from(factions).where(eq(factions.status, "active")),
+      tx
+        .select({ name: proposalParameters.name })
+        .from(proposalParameters)
+        .where(eq(proposalParameters.proposalId, proposalId))
+        .orderBy(asc(proposalParameters.sortOrder)),
+      tx
+        .select({
+          id: opinions.id,
+          parameterPrior: opinions.parameterPrior,
+          deletedAt: opinions.deletedAt,
+        })
+        .from(opinions)
+        .where(eq(opinions.proposalId, proposalId)),
+      tx
+        .select({ id: turns.id })
+        .from(turns)
+        .where(eq(turns.proposalId, proposalId)),
+    ]);
+
+    const initialState =
+      parseProposalSimulationState(initialEvent?.payload) ??
+      createInitialProposalSimulationState(catRows, factionRows);
+    const parameterNames = parameterRows.map((row) => row.name);
+    const turnIds = turnRows.map((row) => row.id);
+
+    // llm_logs.turn_id is intentionally not a foreign key, so remove it
+    // explicitly before removing the turn history itself.
+    if (turnIds.length > 0) {
+      await tx.delete(llmLogs).where(inArray(llmLogs.turnId, turnIds));
+      await tx.delete(votes).where(inArray(votes.turnId, turnIds));
+    }
+    await tx.delete(turns).where(eq(turns.proposalId, proposalId));
+    await tx.delete(events).where(eq(events.proposalId, proposalId));
+    await tx.insert(events).values({
+      proposalId,
+      turnNumber: null,
+      type: "SimulationInitialized",
+      payload: serializeProposalSimulationState(initialState),
+    });
+
+    for (const opinion of opinionRows) {
+      const prior =
+        opinion.parameterPrior && Object.keys(opinion.parameterPrior).length > 0
+          ? opinion.parameterPrior
+          : createNeutralOpinionParameters(parameterNames);
+      await tx
+        .update(opinions)
+        .set({
+          parameterPosterior: prior,
+          point: 0,
+          prevPoint: 0,
+          lastVotedAt: null,
+          nextVoteDue,
+          eligible: !opinion.deletedAt,
+        })
+        .where(eq(opinions.id, opinion.id));
+    }
+
+    await tx
+      .update(proposals)
+      .set({
+        status: "OPEN",
+        adoptedOpinionId: null,
+        runoffStartedAt: null,
+        runoffAutoStartAt: null,
+        runoffTurnsDone: 0,
+        turnLockedUntil: null,
+      })
+      .where(eq(proposals.id, proposalId));
+  });
+
+  revalidatePath(`/proposals/${proposalId}`);
+  revalidatePath("/");
+  revalidatePath("/admin");
 }
