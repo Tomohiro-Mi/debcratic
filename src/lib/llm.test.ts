@@ -166,6 +166,14 @@ describe("LLM vote calibration", () => {
     expect(alignReasonTone("少し心配です。", -9)).toContain("断固反対");
   });
 
+  it("turns hedged comments into explicit stances", () => {
+    expect(alignReasonTone("慎重に決めたいニャ。", 4)).toContain("私はこの意見に賛成だ。");
+    expect(alignReasonTone("様子を見たいです。", -4)).toContain("私はこの意見に反対だ。");
+    expect(alignReasonTone("まだ判断が難しいです。", 0)).toContain(
+      "私はこの意見に賛成票も反対票も投じない。",
+    );
+  });
+
   it("creates semantic parameters without a network call in fallback mode", async () => {
     const result = await inferOpinionParameters(
       {
