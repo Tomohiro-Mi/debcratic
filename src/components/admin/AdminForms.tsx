@@ -344,7 +344,7 @@ export function SettingsForm({
               placeholder="google/gemini-2.5-flash"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              投稿時に評価軸の値を推定するモデルです。
+              投稿時に評価軸の値を推定するモデルです。Batch API専用（末尾が :batch）のモデルは選べません。
             </p>
           </div>
           <div>
@@ -357,7 +357,7 @@ export function SettingsForm({
               placeholder="openai/gpt-4o-mini"
             />
             <p className="mt-1 text-[10px] text-stone-400">
-              確定した投票値を猫の発言へ変換するモデルです。
+              確定した投票値を猫の発言へ変換するモデルです。Batch API専用（末尾が :batch）のモデルは選べません。
             </p>
           </div>
           {field("temperature", "temperature", s.temperature, { step: "0.1" })}

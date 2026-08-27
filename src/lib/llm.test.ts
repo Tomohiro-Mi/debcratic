@@ -5,6 +5,7 @@ import {
   generateVoteComments,
   inferOpinionParameters,
   mockVotes,
+  testLlmConnection,
   type LLMVoteInput,
 } from "@/lib/llm";
 
@@ -60,6 +61,16 @@ const input: LLMVoteInput = {
 };
 
 describe("LLM vote calibration", () => {
+  it("rejects Batch API-only models before making a chat-completions request", async () => {
+    const result = await testLlmConnection("test-key", "google/gemini-3.7-flash:batch");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.model).toBe("google/gemini-3.7-flash:batch");
+      expect(result.error).toContain("Batch API専用");
+    }
+  });
+
   it("applies each cat's selected comment suffix", () => {
     const votes = mockVotes(input);
 

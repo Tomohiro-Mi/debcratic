@@ -1,7 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { systemSettings } from "@/db/schema";
 import { getDb } from "@/db";
-import { DEFAULTS } from "@/lib/constants";
+import { DEFAULTS, resolveSynchronousModel } from "@/lib/constants";
 import { decryptSecret, maskSecret } from "@/lib/crypto";
 
 // Settings rows 2-6 use the existing runoff_turn_limit column. This keeps the
@@ -86,9 +86,18 @@ export async function getEffectiveSettings(): Promise<EffectiveSettings> {
     DEFAULTS.voteIntervalMinutes;
 
   const environment = envSettings();
-  const legacyModel = row?.llmModel ?? environment.llmModel ?? DEFAULTS.llmModel;
-  const opinionModel = row?.opinionModel ?? environment.opinionModel ?? legacyModel;
-  const commentModel = row?.commentModel ?? environment.commentModel ?? legacyModel;
+  const legacyModel = resolveSynchronousModel(
+    row?.llmModel ?? environment.llmModel,
+    DEFAULTS.llmModel,
+  );
+  const opinionModel = resolveSynchronousModel(
+    row?.opinionModel ?? environment.opinionModel ?? legacyModel,
+    DEFAULTS.opinionModel,
+  );
+  const commentModel = resolveSynchronousModel(
+    row?.commentModel ?? environment.commentModel ?? legacyModel,
+    DEFAULTS.commentModel,
+  );
   const dbKey = row?.llmApiKeyEnc ? decryptSecret(row.llmApiKeyEnc) : null;
   const envKey = process.env.OPENROUTER_API_KEY || null;
   const apiKey = dbKey ?? envKey;

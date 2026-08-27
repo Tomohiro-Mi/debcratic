@@ -33,6 +33,7 @@ import {
   COMMENT_SUFFIXES,
   DEFAULTS,
   FOLLOWER_MAX_POWER,
+  isBatchOnlyModel,
   LEADER_POWER_THRESHOLD,
   MAX_VOTE_INTERVAL_MINUTES,
   MIN_VOTE_INTERVAL_MINUTES,
@@ -340,6 +341,15 @@ export async function saveSettingsAction(
 
   const opinionModel = String(formData.get("opinionModel") ?? "").trim() || DEFAULTS.opinionModel;
   const commentModel = String(formData.get("commentModel") ?? "").trim() || DEFAULTS.commentModel;
+  const batchModels = [
+    isBatchOnlyModel(opinionModel) ? `意見の意味解析モデル「${opinionModel}」` : null,
+    isBatchOnlyModel(commentModel) ? `投票コメント生成モデル「${commentModel}」` : null,
+  ].filter((value): value is string => Boolean(value));
+  if (batchModels.length > 0) {
+    return {
+      error: `${batchModels.join("、")}はBatch API専用です。末尾が :batch ではないモデルを選択してください。`,
+    };
+  }
   const values: typeof systemSettings.$inferInsert = {
     // Keep llmModel populated for older rows and deployments that still read it.
     llmModel: commentModel,
@@ -472,7 +482,7 @@ export async function testLlmConnectionAction(
       success: `接続OK: 意見解析=${s.opinionModel} / コメント=${s.commentModel} 🐾`,
     };
   }
-  return { error: `接続失敗: ${failed.error}` };
+  return { error: `接続失敗（${failed.model}）: ${failed.error}` };
 }
 
 export async function resolveReportAction(formData: FormData): Promise<void> {

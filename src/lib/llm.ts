@@ -4,6 +4,7 @@ import {
   COMMENT_PROMPT_VERSION,
   DEFAULTS,
   OPINION_SEMANTIC_PROMPT_VERSION,
+  synchronousModelError,
   VOTE_ENGINE_VERSION,
   type CommentSuffix,
 } from "@/lib/constants";
@@ -499,6 +500,7 @@ export async function fetchOpenRouterModels(): Promise<string[]> {
     return (data.data ?? [])
       .map((model) => model.id)
       .filter((id): id is string => Boolean(id))
+      .filter((id) => !id.trim().toLowerCase().endsWith(":batch"))
       .sort();
   } catch {
     return [];
@@ -508,7 +510,16 @@ export async function fetchOpenRouterModels(): Promise<string[]> {
 export async function testLlmConnection(
   apiKey: string,
   model: string,
-): Promise<{ ok: true; model: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; model: string }
+  | { ok: false; model: string; error: string }
+> {
+  const normalizedModel = model.trim();
+  const modelError = synchronousModelError(normalizedModel);
+  if (modelError) {
+    return { ok: false, model: normalizedModel, error: modelError };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
@@ -519,15 +530,27 @@ export async function testLlmConnection(
         "Content-Type": "application/json",
         "X-Title": "debuneko-democracy",
       },
-      body: JSON.stringify({ model, messages: [{ role: "user", content: "ping" }], max_tokens: 5 }),
+      body: JSON.stringify({
+        model: normalizedModel,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 5,
+      }),
       signal: controller.signal,
     });
     if (!response.ok) {
-      return { ok: false, error: `HTTP ${response.status}: ${(await response.text()).slice(0, 200)}` };
+      return {
+        ok: false,
+        model: normalizedModel,
+        error: `HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`,
+      };
     }
-    return { ok: true, model };
+    return { ok: true, model: normalizedModel };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      model: normalizedModel,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timeout);
   }

@@ -39,6 +39,28 @@ export const DEFAULTS = {
   },
 } as const;
 
+/**
+ * The synchronous chat-completions flow cannot call OpenRouter Batch-only
+ * model variants. Keep this check in one place so settings, validation, and
+ * connection tests apply the same rule.
+ */
+export function isBatchOnlyModel(model: string | null | undefined): boolean {
+  return Boolean(model?.trim().toLowerCase().endsWith(":batch"));
+}
+
+export function resolveSynchronousModel(
+  model: string | null | undefined,
+  fallback: string,
+): string {
+  const candidate = model?.trim();
+  return candidate && !isBatchOnlyModel(candidate) ? candidate : fallback;
+}
+
+export function synchronousModelError(model: string): string | null {
+  if (!isBatchOnlyModel(model)) return null;
+  return `モデル「${model}」はOpenRouterのBatch API専用です。通常の投票処理では使えないため、末尾が :batch ではないモデルを選択してください。`;
+}
+
 export const MIN_VOTE_INTERVAL_MINUTES = 1;
 export const MAX_VOTE_INTERVAL_MINUTES = 365 * 24 * 60;
 
