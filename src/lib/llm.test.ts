@@ -111,6 +111,51 @@ describe("LLM vote calibration", () => {
     }
   });
 
+  it("adds a concrete reason when the model returns only a stance", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  comments: { "cat-a": { reason: "この意見には反対票を投じるニャ。" } },
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await generateVoteComments(
+        {
+          ...input,
+          cats: input.cats.slice(0, 1).map((cat) => ({
+            id: cat.id,
+            name: cat.name,
+            commentSuffix: cat.commentSuffix,
+            factionName: cat.factionName,
+            score: -8,
+            confidence: 0.9,
+            factors: [{ label: "安全性", delta: -4 }],
+          })),
+        },
+        { apiKey: "test-key", model: "test/comment-model" },
+      );
+
+      expect(result.comments["cat-a"]).toContain("地獄");
+      expect(result.comments["cat-a"]).toContain("安全性");
+      expect(result.comments["cat-a"]).toContain("反対");
+      expect(result.comments["cat-a"]).not.toBe("この意見には反対票を投じるニャ。");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects Batch API-only models before making a chat-completions request", async () => {
     const result = await testLlmConnection("test-key", "google/gemini-3.7-flash:batch");
 

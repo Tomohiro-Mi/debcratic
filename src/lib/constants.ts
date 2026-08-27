@@ -13,7 +13,7 @@ export const SCORE_MAX = 10;
 
 export const VOTE_ENGINE_VERSION = "bayes-v1";
 export const OPINION_SEMANTIC_PROMPT_VERSION = "opinion-params-v1";
-export const COMMENT_PROMPT_VERSION = "vote-comment-v3-decisive";
+export const COMMENT_PROMPT_VERSION = "vote-comment-v4-grounded-decisive";
 /** @deprecated Use the dedicated semantic/comment versions above. */
 export const PROMPT_VERSION = VOTE_ENGINE_VERSION;
 
